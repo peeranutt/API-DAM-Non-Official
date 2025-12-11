@@ -28,7 +28,7 @@ export class AssetsController {
         destination: './uploads',
         filename: (req, file, cb) => {
           const uniqueName =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
+            file.originalname + Date.now() + '-' + Math.round(Math.random() * 1e9);
           cb(
             null,
             uniqueName + extname(file.originalname),
@@ -37,13 +37,29 @@ export class AssetsController {
       }),
     }),
   )
-  uploadSingle(@UploadedFile() file: Express.Multer.File){
-    console.log(file);
-    return { success: true, file: file.filename };
+  async uploadSingle(@UploadedFile() file: Express.Multer.File){
+    console.log("file now:",file);
+    const job =await this.assetsService.processAsset(file)
+    return {
+      success: true,
+      jobId: job.id,
+      file: file.filename,
+      message: 'File uploaded and queued for processing',
+    };
   }
+  // uploadSingle(@UploadedFile() file: Express.Multer.File){
+  //   console.log(file);
+  //   return { success: true, file: file.filename };
+  // }
   // create(@Body() createAssetDto: CreateAssetDto) {
   //   return this.assetsService.create(createAssetDto);
   // }
+
+  @Get('job/:jobId')
+  async getJobStatus(@Param('jobId') jobId: string) {
+    return this.assetsService.getJobStatus(jobId);
+  }
+
   @Get()
   findAll() {
     return this.assetsService.findAll();
