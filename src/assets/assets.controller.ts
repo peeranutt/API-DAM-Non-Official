@@ -16,7 +16,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
-
 @Controller('assets')
 export class AssetsController {
   constructor(private readonly assetsService: AssetsService) {}
@@ -28,45 +27,50 @@ export class AssetsController {
         destination: './uploads',
         filename: (req, file, cb) => {
           const uniqueName =
-            file.originalname + Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(
-            null,
-            uniqueName + extname(file.originalname),
-          );
+            file.originalname + '-' + Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueName + extname(file.originalname));
         },
       }),
     }),
   )
-  async uploadSingle(@UploadedFile() file: Express.Multer.File){
-    console.log("file now:",file);
-    const job =await this.assetsService.processAsset(file)
+  async uploadSingle(@UploadedFile() file: Express.Multer.File) {
+    console.log('file now:', file);
+    const job = await this.assetsService.processAsset(file, 1); // userId hardcoded as 1 for now
+    console.log('job now:', job);
     return {
       success: true,
       jobId: job.id,
-      file: file.filename,
+      filename: file.filename,
       message: 'File uploaded and queued for processing',
     };
   }
-  // uploadSingle(@UploadedFile() file: Express.Multer.File){
-  //   console.log(file);
-  //   return { success: true, file: file.filename };
-  // }
-  // create(@Body() createAssetDto: CreateAssetDto) {
-  //   return this.assetsService.create(createAssetDto);
-  // }
+
+  @Post(':assetId/metadata')
+  async saveMetadata(
+    @Param('assetId') assetId: number,
+    @Body() body: { metadata: { fieldId: number; value: string }[] },
+  ) {
+    await this.assetsService.saveAssetMetadata(assetId, body.metadata);
+    return { success: true, message: 'Metadata saved' };
+  }
 
   @Get('job/:jobId')
   async getJobStatus(@Param('jobId') jobId: string) {
     return this.assetsService.getJobStatus(jobId);
   }
 
+  @Get('metadata-fields')
+  async getMetadataFields() {
+    return this.assetsService.getMetadataFields();
+  }
+
   @Get()
-  findAll() {
+  async findAll() {
     return this.assetsService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string) {
     return this.assetsService.findOne(+id);
   }
 
