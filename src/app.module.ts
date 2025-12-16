@@ -33,3 +33,6 @@ import { QueueModule } from './queue/queue.module';
   providers: [AppService],
 })
 export class AppModule {}
+
+// delete data in db
+//  npx ts-node scripts/clear-db.ts
