@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue} from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { Queue } from 'bull';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Asset, AssetStatus } from './entities/asset.entity';
 import { MetadataField } from './entities/metadata-field.entity';
 import { AssetMetadata } from './entities/asset-metadata.entity';
@@ -102,8 +104,9 @@ export class AssetsService {
     };
   }
 
-  async findAll() {
-    return await this.assetRepository.find({ relations: ['metadata'] });
+  async findAll(): Promise<Asset[]> {
+    // ดึง Asset ทั้งหมดจากฐานข้อมูล
+    return this.assetRepository.find(); 
   }
 
   async findOne(id: number) {
@@ -111,6 +114,35 @@ export class AssetsService {
       where: { id },
       relations: ['metadata'],
     });
+  }
+
+  async getFileStream(
+    id: string,
+  ): Promise<{ readStream: fs.ReadStream; fileMimeType: string; fileName: string }> {
+    const assetId = parseInt(id, 10);
+    
+    const asset = await this.assetRepository.findOne({ where: { id: assetId } });
+    
+    if (!asset) {
+      throw new NotFoundException(`Asset with ID ${id} not found`);
+    }
+
+    const filePath = path.join(process.cwd(), asset.path);
+
+    //สำหรับ Debugging สามารถลบทิ้งได้หลังจากแก้ไขเสร็จ
+    console.log(`Attempting to read file at path: ${filePath}`); 
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException(`Asset file for ID ${id} not found on disk`);
+    }
+
+    const readStream = fs.createReadStream(filePath);
+
+    return {
+      readStream: readStream,
+      fileMimeType: asset.file_type, 
+      fileName: asset.filename, 
+    };
   }
 
   async getMetadataFields() {
