@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { AssetsModule } from './assets/assets.module';
 import { QueueModule } from './queue/queue.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [ConfigModule.forRoot({
@@ -28,6 +29,7 @@ import { QueueModule } from './queue/queue.module';
   AuthModule,
   AssetsModule,
   QueueModule,
+  SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue} from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, ILike } from 'typeorm';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -147,6 +147,49 @@ export class AssetsService {
 
   async getMetadataFields() {
     return await this.metadataFieldRepository.find();
+  }
+
+  async searchByFilters(filters: any) {
+    const { name, type, collection, dateRange, keywords } = filters;
+    
+    let query = this.assetRepository.createQueryBuilder('asset');
+
+    if (name) {
+      query.andWhere('asset.name LIKE :name', { name: `%${name}%` });
+    }
+
+    if (type) {
+      query.andWhere('asset.type = :type', { type });
+    }
+
+    if (collection) {
+      query.andWhere('asset.collection = :collection', { collection });
+    }
+
+    if (dateRange && dateRange.start && dateRange.end) {
+      query.andWhere('asset.updatedAt BETWEEN :start AND :end', {
+        start: dateRange.start,
+        end: dateRange.end,
+      });
+    }
+
+    if (keywords && keywords.length > 0) {
+      query.andWhere('asset.keywords && :keywords', { keywords });
+    }
+
+    return query.getMany();
+  }
+
+  async getSearchSuggestions(query: string) {
+    const suggestions = await this.assetRepository
+      .createQueryBuilder('asset')
+      .select(['DISTINCT asset.name', 'asset.type', 'asset.collection'])
+      .where('asset.name ILIKE :query', { query: `%${query}%` })
+      .orWhere('asset.collection ILIKE :query', { query: `%${query}%` })
+      .limit(10)
+      .getRawMany();
+
+    return suggestions;
   }
 
   create(createAssetDto: CreateAssetDto) {
