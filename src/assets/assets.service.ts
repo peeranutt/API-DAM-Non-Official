@@ -43,6 +43,7 @@ export class AssetsService {
     } else if (file.mimetype.startsWith('video/')) {
       jobName = 'process-video';
     } else {
+      console.log('Processing as document');
       jobName = 'process-document';
     }
 

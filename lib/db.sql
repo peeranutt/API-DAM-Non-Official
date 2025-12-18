@@ -31,7 +31,7 @@ create table assets (
 	file_type varchar(50) NOT NULL,
 	file_size BIGINT,
 	path varchar NOT NULL,
-	keywords array,
+	keywords TEXT[],
 	status varchar(20) check (status IN ('active', 'deleted')) NOT NULL,
 	create_by int references users(id),
 	created_at TIMESTAMP DEFAULT now(),
@@ -87,3 +87,18 @@ create table activity_logs (
 	detail varchar,
 	created_at TIMESTAMP DEFAULT now()
 );
+
+INSERT INTO metadata_fields (name, type, options) VALUES
+('assetCode', 'text', NULL),
+('category', 'select', 'image,video,document,other'),
+('title', 'text', NULL),
+('keywords', 'text', NULL),
+('description', 'text', NULL),
+('createDate', 'date', NULL),
+('userKeywords', 'text', NULL),
+('collectionId', 'text', NULL),
+('notes', 'text', NULL),
+('accessRights', 'select', 'public,private'),
+('owner', 'text', NULL),
+('modifiedDate', 'date', NULL),
+('status', 'select', 'active,deleted');

@@ -13,7 +13,11 @@ import {
   MetadataFieldType,
 } from '../entities/metadata-field.entity';
 import { generateVideoThumbnail } from '../utils/video-thumbnail';
-import { pdfToThumbnail, officeToPdf, generateSvgPlaceholder } from '../utils/doc-thumbnail';
+import {
+  pdfToThumbnail,
+  officeToPdf,
+  generateSvgPlaceholder,
+} from '../utils/doc-thumbnail';
 
 export interface AssetJobData {
   filename: string;
@@ -124,13 +128,16 @@ export class AssetProcessor {
       // บันทึก Asset ลง database
       const asset = this.assetRepository.create({
         filename,
+        original_name: filename,
+        thumbnail: `thumbnails/thumb_${filename}`,
         file_type: imageMetadata.format || mimetype,
         file_size: size,
         path: inputPath,
+        keywords: keywords ? keywords.split(',').map((kw) => kw.trim()) : [],
         create_by: userId,
         status: AssetStatus.ACTIVE,
       });
-
+      console.log('Created Asset entity:', asset);
       const savedAsset = await this.assetRepository.save(asset);
 
       await job.progress(75);
@@ -262,10 +269,12 @@ export class AssetProcessor {
       // บันทึก Video asset ลง database
       const asset = this.assetRepository.create({
         filename,
+        original_name: filename,
+        thumbnail: `thumbnails/thumb_${filename}`,
         file_type: mimetype,
         file_size: size,
         path: `./uploads/${filename}`,
-        // thumbnail: thumbnailPath.replace(process.cwd(), ''),
+        keywords: [],
         create_by: userId,
         status: AssetStatus.ACTIVE,
       });
@@ -444,10 +453,12 @@ export class AssetProcessor {
 
     const asset = this.assetRepository.create({
       filename,
+      original_name: filename,
+      thumbnail: `thumbnails/thumb_${filename}`,
       file_type: mimetype,
       file_size: size,
       path: inputPath,
-      // thumbnail: `thumbnails/thumb_${baseName}.png`,
+      keywords: [],
       create_by: userId,
       status: AssetStatus.ACTIVE,
     });
