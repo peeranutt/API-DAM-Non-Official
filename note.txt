@@ -1,0 +1,8 @@
+ติดตั้งเพิ่มบนเครื่อง
+
+// video
+- ffmepeg
+
+// pdf&document
+- libreoffice => แปลง doc / docx / xlsx → pdf
+- poppler-utils => render pdf → รูป

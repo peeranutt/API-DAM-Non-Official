@@ -32,9 +32,19 @@ export class AssetsService {
       userId,
     };
     // choose job type based on mimetype
-    let jobName = 'process-image';
-    if (file.mimetype === 'application/pdf') jobName = 'process-pdf';
-    else if (file.mimetype && file.mimetype.startsWith('video/')) jobName = 'process-video';
+    // let jobName = 'process-image';
+    // if (file.mimetype === 'application/pdf') jobName = 'process-pdf';
+    // else if (file.mimetype && file.mimetype.startsWith('video/')) jobName = 'process-video';
+
+    let jobName: string;
+
+    if (file.mimetype.startsWith('image/')) {
+      jobName = 'process-image';
+    } else if (file.mimetype.startsWith('video/')) {
+      jobName = 'process-video';
+    } else {
+      jobName = 'process-document';
+    }
 
     const job = await this.assetQueue.add(jobName, jobData, {
       attempts: 3,

@@ -25,10 +25,13 @@ create table group_members (
 );
 create table assets (
 	id SERIAL primary key,
+	original_name varchar(255) NOT NULL,
 	filename varchar(255) NOT NULL,
+	thumbnail varchar(255),
 	file_type varchar(50) NOT NULL,
 	file_size BIGINT,
 	path varchar NOT NULL,
+	keywords array,
 	status varchar(20) check (status IN ('active', 'deleted')) NOT NULL,
 	create_by int references users(id),
 	created_at TIMESTAMP DEFAULT now(),

@@ -8,7 +8,12 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { Asset, AssetStatus } from '../entities/asset.entity';
 import { AssetMetadata } from '../entities/asset-metadata.entity';
-import { MetadataField, MetadataFieldType } from '../entities/metadata-field.entity';
+import {
+  MetadataField,
+  MetadataFieldType,
+} from '../entities/metadata-field.entity';
+import { generateVideoThumbnail } from '../utils/video-thumbnail';
+import { pdfToThumbnail, officeToPdf, generateSvgPlaceholder } from '../utils/doc-thumbnail';
 
 export interface AssetJobData {
   filename: string;
@@ -51,10 +56,25 @@ export class AssetProcessor {
     this.logger.log(`Processing image: ${job.data.filename}`);
 
     try {
-      const { filename, originalPath, mimetype, size, userId, 
-        assetCode, category, title, keywords, description, createDate, 
-        userKeywords, collectionId, notes, accessRights, owner, 
-        modifiedDate, status
+      const {
+        filename,
+        originalPath,
+        mimetype,
+        size,
+        userId,
+        assetCode,
+        category,
+        title,
+        keywords,
+        description,
+        createDate,
+        userKeywords,
+        collectionId,
+        notes,
+        accessRights,
+        owner,
+        modifiedDate,
+        status,
       } = job.data;
 
       if (!mimetype.startsWith('image/')) {
@@ -128,33 +148,54 @@ export class AssetProcessor {
         // { meta_key: 'optimized_path', meta_value: `optimized/opt_${filename}` },
 
         // Metadata ที่มาจากฟอร์มของผู้ใช้ (จาก job.data)
-            ...(assetCode ? [{ meta_key: 'asset_code', meta_value: assetCode }] : []),
-            ...(category ? [{ meta_key: 'category', meta_value: category }] : []),
-            ...(title ? [{ meta_key: 'title', meta_value: title }] : []),
-            ...(keywords ? [{ meta_key: 'keywords', meta_value: keywords }] : []),
-            ...(description ? [{ meta_key: 'description', meta_value: description }] : []),
-            ...(createDate ? [{ meta_key: 'creation_date', meta_value: createDate }] : []),
-            // ใช้ชื่อฟิลด์ให้ตรงกับที่ปรากฏในตาราง metadata_fields
-            ...(userKeywords ? [{ meta_key: 'user_keywords', meta_value: userKeywords }] : []), 
-            ...(collectionId ? [{ meta_key: 'collection_id', meta_value: collectionId.toString() }] : []),
-            ...(notes ? [{ meta_key: 'notes', meta_value: notes }] : []),
-            ...(accessRights ? [{ meta_key: 'access_rights', meta_value: accessRights }] : []),
-            ...(owner ? [{ meta_key: 'owner', meta_value: owner }] : []),
-            ...(modifiedDate ? [{ meta_key: 'modified_date', meta_value: modifiedDate }] : []),
-            ...(status ? [{ meta_key: 'asset_status_user', meta_value: status }] : []), // ตั้งชื่อให้ต่างจาก status ระบบ
-
+        ...(assetCode
+          ? [{ meta_key: 'asset_code', meta_value: assetCode }]
+          : []),
+        ...(category ? [{ meta_key: 'category', meta_value: category }] : []),
+        ...(title ? [{ meta_key: 'title', meta_value: title }] : []),
+        ...(keywords ? [{ meta_key: 'keywords', meta_value: keywords }] : []),
+        ...(description
+          ? [{ meta_key: 'description', meta_value: description }]
+          : []),
+        ...(createDate
+          ? [{ meta_key: 'creation_date', meta_value: createDate }]
+          : []),
+        // ใช้ชื่อฟิลด์ให้ตรงกับที่ปรากฏในตาราง metadata_fields
+        ...(userKeywords
+          ? [{ meta_key: 'user_keywords', meta_value: userKeywords }]
+          : []),
+        ...(collectionId
+          ? [{ meta_key: 'collection_id', meta_value: collectionId.toString() }]
+          : []),
+        ...(notes ? [{ meta_key: 'notes', meta_value: notes }] : []),
+        ...(accessRights
+          ? [{ meta_key: 'access_rights', meta_value: accessRights }]
+          : []),
+        ...(owner ? [{ meta_key: 'owner', meta_value: owner }] : []),
+        ...(modifiedDate
+          ? [{ meta_key: 'modified_date', meta_value: modifiedDate }]
+          : []),
+        ...(status
+          ? [{ meta_key: 'asset_status_user', meta_value: status }]
+          : []), // ตั้งชื่อให้ต่างจาก status ระบบ
       ];
 
       // Ensure metadata fields exist and map entries to AssetMetadata with field relation
       const keys = metadataEntries.map((e) => e.meta_key);
-      const existingFields = await this.metadataFieldRepository.find({ where: { name: In(keys) } });
+      const existingFields = await this.metadataFieldRepository.find({
+        where: { name: In(keys) },
+      });
 
       const fieldsByName: Record<string, MetadataField> = {};
       for (const f of existingFields) fieldsByName[f.name] = f;
 
       const toCreateFields = keys.filter((k) => !fieldsByName[k]);
       for (const name of toCreateFields) {
-        const newField = this.metadataFieldRepository.create({ name, type: MetadataFieldType.TEXT, options: null });
+        const newField = this.metadataFieldRepository.create({
+          name,
+          type: MetadataFieldType.TEXT,
+          options: null,
+        });
         const savedField = await this.metadataFieldRepository.save(newField);
         fieldsByName[savedField.name] = savedField;
       }
@@ -204,7 +245,19 @@ export class AssetProcessor {
     try {
       const { filename, size, userId, mimetype } = job.data;
 
-      await job.progress(25);
+      const uploadsDir = './uploads';
+      const videoPath = path.join(uploadsDir, filename);
+      const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
+
+      await job.progress(20);
+
+      const thumbnailPath = await generateVideoThumbnail(
+        videoPath,
+        thumbnailsDir,
+        filename,
+      );
+
+      await job.progress(60);
 
       // บันทึก Video asset ลง database
       const asset = this.assetRepository.create({
@@ -212,13 +265,12 @@ export class AssetProcessor {
         file_type: mimetype,
         file_size: size,
         path: `./uploads/${filename}`,
+        // thumbnail: thumbnailPath.replace(process.cwd(), ''),
         create_by: userId,
         status: AssetStatus.ACTIVE,
       });
 
       const savedAsset = await this.assetRepository.save(asset);
-
-      await job.progress(75);
 
       await job.progress(100);
 
@@ -277,7 +329,9 @@ export class AssetProcessor {
       try {
         await fs.copyFile(inputPath, optimizedPath);
       } catch (e) {
-        this.logger.warn(`Could not copy PDF to optimized folder: ${e?.message ?? e}`);
+        this.logger.warn(
+          `Could not copy PDF to optimized folder: ${e?.message ?? e}`,
+        );
       }
 
       // save Asset to database
@@ -295,20 +349,29 @@ export class AssetProcessor {
       // metadata entries
       const metadataEntries = [
         { meta_key: 'format', meta_value: 'pdf' },
-        { meta_key: 'thumbnail_path', meta_value: `thumbnails/${thumbFilename}` },
+        {
+          meta_key: 'thumbnail_path',
+          meta_value: `thumbnails/${thumbFilename}`,
+        },
         { meta_key: 'optimized_path', meta_value: `optimized/${filename}` },
       ];
 
       // Ensure metadata fields exist and map entries to AssetMetadata with field relation
       const keys = metadataEntries.map((e) => e.meta_key);
-      const existingFields = await this.metadataFieldRepository.find({ where: { name: In(keys) } });
+      const existingFields = await this.metadataFieldRepository.find({
+        where: { name: In(keys) },
+      });
 
       const fieldsByName: Record<string, MetadataField> = {};
       for (const f of existingFields) fieldsByName[f.name] = f;
 
       const toCreateFields = keys.filter((k) => !fieldsByName[k]);
       for (const name of toCreateFields) {
-        const newField = this.metadataFieldRepository.create({ name, type: MetadataFieldType.TEXT, options: null });
+        const newField = this.metadataFieldRepository.create({
+          name,
+          type: MetadataFieldType.TEXT,
+          options: null,
+        });
         const savedField = await this.metadataFieldRepository.save(newField);
         fieldsByName[savedField.name] = savedField;
       }
@@ -345,6 +408,60 @@ export class AssetProcessor {
     }
   }
 
+  @Process('process-document')
+  async handleDocumentProcessing(job: Job<AssetJobData>) {
+    const { filename, size, userId, mimetype } = job.data;
+
+    const uploadsDir = './uploads';
+    const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
+    const optimizedDir = path.join(uploadsDir, 'optimized');
+
+    await fs.mkdir(thumbnailsDir, { recursive: true });
+    await fs.mkdir(optimizedDir, { recursive: true });
+
+    const inputPath = path.join(uploadsDir, filename);
+    const ext = path.extname(filename).toLowerCase();
+    const baseName = path.parse(filename).name;
+    const thumbPath = path.join(thumbnailsDir, `thumb_${baseName}.png`);
+
+    await job.progress(20);
+
+    if (ext === '.pdf') {
+      await pdfToThumbnail(inputPath, thumbPath);
+    } else if (
+      ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'].includes(ext)
+    ) {
+      await officeToPdf(inputPath, thumbnailsDir);
+      const pdfPath = path.join(thumbnailsDir, `${baseName}.pdf`);
+      await pdfToThumbnail(pdfPath, thumbPath);
+    } else {
+      await sharp(Buffer.from(generateSvgPlaceholder(filename)))
+        .png()
+        .toFile(thumbPath);
+    }
+
+    await job.progress(60);
+
+    const asset = this.assetRepository.create({
+      filename,
+      file_type: mimetype,
+      file_size: size,
+      path: inputPath,
+      // thumbnail: `thumbnails/thumb_${baseName}.png`,
+      create_by: userId,
+      status: AssetStatus.ACTIVE,
+    });
+
+    const savedAsset = await this.assetRepository.save(asset);
+
+    await job.progress(100);
+
+    return {
+      success: true,
+      assetId: savedAsset.id,
+    };
+  }
+
   @Process('cleanup-temp')
   async handleCleanup(job: Job<{ files: string[] }>) {
     this.logger.log(`Cleaning up temporary files`);
@@ -354,7 +471,9 @@ export class AssetProcessor {
         await fs.unlink(file);
         this.logger.log(`Deleted: ${file}`);
       } catch (error) {
-        this.logger.warn(`Failed to delete ${file}: ${error?.message ?? error}`);
+        this.logger.warn(
+          `Failed to delete ${file}: ${error?.message ?? error}`,
+        );
       }
     }
 
@@ -376,7 +495,9 @@ export class AssetProcessor {
         deletedCount: job.data.assetIds.length,
       };
     } catch (error) {
-      this.logger.error(`Error soft deleting assets: ${error?.message ?? error}`);
+      this.logger.error(
+        `Error soft deleting assets: ${error?.message ?? error}`,
+      );
       throw error;
     }
   }
