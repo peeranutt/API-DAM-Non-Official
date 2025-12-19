@@ -14,16 +14,12 @@ export enum MetadataFieldType {
   BOOLEAN = 'boolean',
 }
 
-@Entity({ name: 'metadata_fields' })
+@Entity('metadata_fields')
 export class MetadataField {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({
-    type: 'varchar',
-    length: 100,
-    unique: true,
-  })
+  @Column({ unique: true })
   name: string;
 
   @Column({
@@ -32,12 +28,8 @@ export class MetadataField {
   })
   type: MetadataFieldType;
 
-  @Column({
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  options?: string | null; // JSON string for select options
+  @Column({ nullable: true })
+  options?: string;
 
   @CreateDateColumn()
   created_at: Date;

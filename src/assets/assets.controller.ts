@@ -8,7 +8,8 @@ import {
   Delete,
   UseInterceptors,
   UploadedFile,
-  Res
+  Res,
+  Put
 } from '@nestjs/common';
 import { AssetsService } from './assets.service';
 import { CreateAssetDto } from './dto/create-asset.dto';
@@ -69,7 +70,7 @@ export class AssetsController {
     };
   }
 
-  @Post(':assetId/metadata')
+  @Put(':assetId/metadata')
   async saveMetadata(
     @Param('assetId') assetId: number,
     @Body() body: { metadata: { fieldId: number; value: string }[] },

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue} from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import type { Queue } from 'bull';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -81,19 +81,89 @@ export class AssetsService {
   }
 
   async saveAssetMetadata(
-    assetId: number,
-    metadataList: { fieldId: number; value: string }[],
-  ) {
-    const metadata = metadataList.map((item) =>
-      this.assetMetadataRepository.create({
-        asset_id: assetId,
-        field_id: item.fieldId,
-        value: item.value,
-      }),
-    );
+  assetId: number,
+  metadata: { fieldId: number; value: string }[],
+) {
+  const asset = await this.assetRepository.findOne({
+    where: { id: assetId },
+  });
 
-    return await this.assetMetadataRepository.save(metadata);
+  if (!asset) {
+    throw new NotFoundException('Asset not found');
   }
+
+  /** -----------------------------
+   * 1️⃣ โหลด metadata_fields
+   * ----------------------------- */
+  const fieldIds = metadata.map((m) => m.fieldId);
+
+  const fields = await this.metadataFieldRepository.find({
+    where: { id: In(fieldIds) },
+  });
+
+  const fieldsById = Object.fromEntries(
+    fields.map((f) => [f.id, f]),
+  );
+
+  /** -----------------------------
+   * 2️⃣ โหลด asset_metadata เดิม
+   * ----------------------------- */
+  const existingMetadata = await this.assetMetadataRepository.find({
+    where: {
+      asset: { id: assetId },
+      field: { id: In(fieldIds) },
+    },
+    relations: ['field'],
+  });
+
+  const existingByFieldId = Object.fromEntries(
+    existingMetadata.map((m) => [m.field.id, m]),
+  );
+
+  /** -----------------------------
+   * 3️⃣ update / insert metadata
+   * ----------------------------- */
+  let newTitle: string | null = null;
+
+  for (const { fieldId, value } of metadata) {
+    const field = fieldsById[fieldId];
+    if (!field) continue;
+
+    // 🔥 ถ้าเป็น title → เก็บไว้ไป update asset
+    if (field.name === 'title') {
+      newTitle = value;
+    }
+
+    const existing = existingByFieldId[fieldId];
+
+    if (existing) {
+      existing.value = value;
+      await this.assetMetadataRepository.save(existing);
+    } else {
+      await this.assetMetadataRepository.save(
+        this.assetMetadataRepository.create({
+          asset,
+          field,
+          value,
+        }),
+      );
+    }
+  }
+
+  /** -----------------------------
+   * 4️⃣ update asset (title + updated_at)
+   * ----------------------------- */
+  const assetUpdate: Partial<Asset> = {
+    updated_at: new Date(), // ✅ update timestamp
+  };
+
+  if (newTitle !== null && newTitle !== '') {
+    assetUpdate.filename = newTitle; // ✅ sync title → filename
+  }
+
+  await this.assetRepository.update(assetId, assetUpdate);
+}
+
 
   async getJobStatus(jobId: string) {
     const job = await this.assetQueue.getJob(jobId);
