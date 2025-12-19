@@ -9,7 +9,8 @@ import {
   UseInterceptors,
   UploadedFile,
   Res,
-  Put
+  Put,
+  NotFoundException,
 } from '@nestjs/common';
 import { AssetsService } from './assets.service';
 import { CreateAssetDto } from './dto/create-asset.dto';
@@ -19,6 +20,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import iconv from 'iconv-lite';
 import type { Response } from 'express';
+import * as path from 'path';
 
 @Controller('assets')
 export class AssetsController {
@@ -97,8 +99,9 @@ export class AssetsController {
   @Get('file/:id')
   async getFile(@Param('id') id: string, @Res() res: Response) {
     try {
-      const { readStream, fileMimeType, fileName } = await this.assetsService.getFileStream(id);
-      
+      const { readStream, fileMimeType, fileName } =
+        await this.assetsService.getFileStream(id);
+
       if (!readStream) {
         return res.status(404).send('Asset file not found');
       }
@@ -110,6 +113,17 @@ export class AssetsController {
       console.error('Error serving asset file:', error);
       res.status(500).send('Internal server error');
     }
+  }
+
+  @Get(':id/download')
+  async downloadAsset(@Param('id') id: number, @Res() res: Response) {
+    const asset = await this.assetsService.getAssetForDownload(id);
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    return res.download(asset.fullPath, asset.original_name);
   }
 
   @Get(':id')

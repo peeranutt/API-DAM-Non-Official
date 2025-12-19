@@ -230,6 +230,25 @@ export class AssetsService {
     return await this.metadataFieldRepository.find();
   }
 
+  async getAssetForDownload(id: number){
+    const asset = await this.assetRepository.findOne({
+      where: { id },
+    });
+
+    if (!asset) return null;
+
+    const fullPath = path.resolve(asset.path);
+
+    if (!fs.existsSync(fullPath)) {
+      return null;
+    }
+
+    return {
+      fullPath,
+      original_name: asset.original_name
+    }
+  }
+
   async searchByFilters(filters: any) {
     const { name, type, collection, dateRange, keywords } = filters;
     
