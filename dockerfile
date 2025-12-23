@@ -1,30 +1,29 @@
 FROM node:20-bullseye
 
-# ติดตั้ง OS dependencies
+# 1️⃣ ติดตั้ง dependency สำหรับ document processing
 RUN apt-get update && apt-get install -y \
     libreoffice \
     poppler-utils \
     ffmpeg \
-    fonts-noto \
-    fonts-liberation \
+    fonts-dejavu \
+    fonts-thai-tlwg \
     && rm -rf /var/lib/apt/lists/*
 
-# ตั้ง working directory
+# 2️⃣ ตั้ง working directory
 WORKDIR /app
 
-# copy package.json ก่อน (เพื่อ cache)
+# 3️⃣ copy package.json ก่อน (เพื่อ cache)
 COPY package*.json ./
-
 RUN npm install
 
-# copy source code
+# 4️⃣ copy source
 COPY . .
 
-# build nest
+# 5️⃣ build NestJS
 RUN npm run build
 
-# expose port
+# 6️⃣ expose port
 EXPOSE 3001
 
-# start
-CMD ["node", "dist/main.js"]
+# 7️⃣ start app
+CMD ["node", "dist/src/main.js"]

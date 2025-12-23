@@ -22,6 +22,9 @@ export class MetadataField {
   @Column({ unique: true })
   name: string;
 
+  @Column({ nullable: true })
+  name_th: string;
+
   @Column({
     type: 'enum',
     enum: MetadataFieldType,

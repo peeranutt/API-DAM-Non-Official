@@ -21,6 +21,8 @@ import { SearchModule } from './search/search.module';
     password: process.env.DATABASE_PASSWORD,
     database: process.env.DATABASE_NAME,
     entities: [__dirname + '/**/*.entity{.ts,.js}'],
+    retryAttempts: 10,
+    retryDelay: 3000,
     synchronize: true,
     logging: true, // เปิดดู SQL / connection logs
     logger: 'advanced-console',

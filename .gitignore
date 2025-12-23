@@ -4,6 +4,8 @@
 /build
 /uploads
 
+run-docker.txt
+
 # Logs
 logs
 *.log

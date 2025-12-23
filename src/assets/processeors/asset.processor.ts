@@ -41,6 +41,8 @@ export interface AssetJobData {
   status?: string;
 }
 
+// check sum ว่าครบไหม ใช้พวก md5 หรือ sha256 มาเช็ก sum file ก่อนส่ง และ file ปลายทาง
+// pixxee
 @Processor('assets')
 export class AssetProcessor {
   private readonly logger = new Logger(AssetProcessor.name);
@@ -206,179 +208,68 @@ export class AssetProcessor {
     }
   }
 
-  // ไฟล์ PDF
-  // @Process('process-pdf')
-  // async handlePdfProcessing(job: Job<AssetJobData>) {
-  //   this.logger.log(`Processing PDF: ${job.data.filename}`);
-
-  //   try {
-  //     const { filename, originalPath, size, userId, mimetype } = job.data;
-
-  //     const uploadsDir = './uploads';
-  //     const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
-  //     const optimizedDir = path.join(uploadsDir, 'optimized');
-
-  //     await fs.mkdir(thumbnailsDir, { recursive: true });
-  //     await fs.mkdir(optimizedDir, { recursive: true });
-
-  //     const inputPath = path.join(uploadsDir, filename);
-
-  //     await job.progress(20);
-
-  //     // create a PNG thumbnail as a fallback by rendering a small SVG
-  //     const baseName = filename.replace(/\.[^.]+$/, '');
-  //     const thumbFilename = `thumb_${baseName}.png`;
-  //     const thumbnailPath = path.join(thumbnailsDir, thumbFilename);
-
-  //     const svg = `
-  //     <svg width="800" height="1000" xmlns="http://www.w3.org/2000/svg">
-  //       <rect width="100%" height="100%" fill="#f8fafc" />
-  //       <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="36" fill="#111827" font-family="Arial, Helvetica, sans-serif">PDF Preview</text>
-  //       <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="20" fill="#6b7280">${filename}</text>
-  //     </svg>`;
-
-  //     await sharp(Buffer.from(svg)).png().toFile(thumbnailPath);
-
-  //     await job.progress(60);
-
-  //     // copy original PDF to optimized folder (keep original as preview source)
-  //     const optimizedPath = path.join(optimizedDir, filename);
-  //     try {
-  //       await fs.copyFile(inputPath, optimizedPath);
-  //     } catch (e) {
-  //       this.logger.warn(
-  //         `Could not copy PDF to optimized folder: ${e?.message ?? e}`,
-  //       );
-  //     }
-
-  //     // save Asset to database
-  //     const asset = this.assetRepository.create({
-  //       filename,
-  //       file_type: mimetype,
-  //       file_size: size,
-  //       path: inputPath,
-  //       create_by: userId,
-  //       status: AssetStatus.ACTIVE,
-  //     });
-
-  //     const savedAsset = await this.assetRepository.save(asset);
-
-  //     // metadata entries
-  //     const metadataEntries = [
-  //       { meta_key: 'format', meta_value: 'pdf' },
-  //       {
-  //         meta_key: 'thumbnail_path',
-  //         meta_value: `thumbnails/${thumbFilename}`,
-  //       },
-  //       { meta_key: 'optimized_path', meta_value: `optimized/${filename}` },
-  //     ];
-
-  //     // Ensure metadata fields exist and map entries to AssetMetadata with field relation
-  //     const keys = metadataEntries.map((e) => e.meta_key);
-  //     const existingFields = await this.metadataFieldRepository.find({
-  //       where: { name: In(keys) },
-  //     });
-
-  //     const fieldsByName: Record<string, MetadataField> = {};
-  //     for (const f of existingFields) fieldsByName[f.name] = f;
-
-  //     const toCreateFields = keys.filter((k) => !fieldsByName[k]);
-  //     for (const name of toCreateFields) {
-  //       const newField = this.metadataFieldRepository.create({
-  //         name,
-  //         type: MetadataFieldType.TEXT,
-  //         options: null,
-  //       });
-  //       const savedField = await this.metadataFieldRepository.save(newField);
-  //       fieldsByName[savedField.name] = savedField;
-  //     }
-
-  //     const assetMetadataEntities = metadataEntries.map((entry) => {
-  //       const field = fieldsByName[entry.meta_key];
-  //       return this.metadataRepository.create({
-  //         asset: savedAsset,
-  //         field: field,
-  //         value: entry.meta_value,
-  //       });
-  //     });
-
-  //     await this.metadataRepository.save(assetMetadataEntities);
-
-  //     await job.progress(100);
-
-  //     return {
-  //       success: true,
-  //       assetId: savedAsset.id,
-  //       filename,
-  //       thumbnail: `thumbnails/${thumbFilename}`,
-  //       optimized: `optimized/${filename}`,
-  //       metadata: {
-  //         format: 'pdf',
-  //       },
-  //     };
-  //   } catch (error) {
-  //     this.logger.error(
-  //       `Error processing PDF: ${error?.message ?? error}`,
-  //       error?.stack,
-  //     );
-  //     throw error;
-  //   }
-  // }
-
   @Process('process-document')
   async handleDocumentProcessing(job: Job<AssetJobData>) {
-    const { filename, size, userId, mimetype } = job.data;
+    try {
+      const { filename, size, userId, mimetype } = job.data;
 
-    const uploadsDir = './uploads';
-    const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
-    const optimizedDir = path.join(uploadsDir, 'optimized');
+      const uploadsDir = './uploads';
+      const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
+      const optimizedDir = path.join(uploadsDir, 'optimized');
 
-    await fs.mkdir(thumbnailsDir, { recursive: true });
-    await fs.mkdir(optimizedDir, { recursive: true });
+      await fs.mkdir(thumbnailsDir, { recursive: true });
+      await fs.mkdir(optimizedDir, { recursive: true });
 
-    const inputPath = path.join(uploadsDir, filename);
-    const ext = path.extname(filename).toLowerCase();
-    const baseName = path.parse(filename).name;
-    const thumbPath = path.join(thumbnailsDir, `thumb_${baseName}.png`);
+      const inputPath = path.join(uploadsDir, filename);
+      const ext = path.extname(filename).toLowerCase();
+      const baseName = path.parse(filename).name;
+      const thumbPath = path.join(thumbnailsDir, `thumb_${baseName}.png`);
 
-    await job.progress(20);
+      await job.progress(20);
 
-    if (ext === '.pdf') {
-      await pdfToThumbnail(inputPath, thumbPath);
-    } else if (
-      ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'].includes(ext)
-    ) {
-      await officeToPdf(inputPath, thumbnailsDir);
-      const pdfPath = path.join(thumbnailsDir, `${baseName}.pdf`);
-      await pdfToThumbnail(pdfPath, thumbPath);
-    } else {
-      await sharp(Buffer.from(generateSvgPlaceholder(filename)))
-        .png()
-        .toFile(thumbPath);
+      if (ext === '.pdf') {
+        await pdfToThumbnail(inputPath, thumbPath);
+      } else if (
+        ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'].includes(ext)
+      ) {
+        await officeToPdf(inputPath, thumbnailsDir);
+        const pdfPath = path.join(thumbnailsDir, `${baseName}.pdf`);
+        await pdfToThumbnail(pdfPath, thumbPath);
+      } else {
+        await sharp(Buffer.from(generateSvgPlaceholder(filename)))
+          .png()
+          .toFile(thumbPath);
+      }
+
+      await job.progress(60);
+
+      const asset = this.assetRepository.create({
+        filename,
+        original_name: filename,
+        thumbnail: `thumbnails/thumb_${filename}`,
+        file_type: mimetype,
+        file_size: size,
+        path: inputPath,
+        keywords: [],
+        create_by: userId,
+        status: AssetStatus.ACTIVE,
+      });
+
+      const savedAsset = await this.assetRepository.save(asset);
+
+      await job.progress(100);
+
+      return {
+        success: true,
+        assetId: savedAsset.id,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Document processing failed: ${error?.message ?? error}`,
+        error?.stack,
+      );
+      throw error;
     }
-
-    await job.progress(60);
-
-    const asset = this.assetRepository.create({
-      filename,
-      original_name: filename,
-      thumbnail: `thumbnails/thumb_${filename}`,
-      file_type: mimetype,
-      file_size: size,
-      path: inputPath,
-      keywords: [],
-      create_by: userId,
-      status: AssetStatus.ACTIVE,
-    });
-
-    const savedAsset = await this.assetRepository.save(asset);
-
-    await job.progress(100);
-
-    return {
-      success: true,
-      assetId: savedAsset.id,
-    };
   }
 
   @Process('cleanup-temp')
@@ -421,3 +312,122 @@ export class AssetProcessor {
     }
   }
 }
+
+// ไฟล์ PDF
+// @Process('process-pdf')
+// async handlePdfProcessing(job: Job<AssetJobData>) {
+//   this.logger.log(`Processing PDF: ${job.data.filename}`);
+
+//   try {
+//     const { filename, originalPath, size, userId, mimetype } = job.data;
+
+//     const uploadsDir = './uploads';
+//     const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
+//     const optimizedDir = path.join(uploadsDir, 'optimized');
+
+//     await fs.mkdir(thumbnailsDir, { recursive: true });
+//     await fs.mkdir(optimizedDir, { recursive: true });
+
+//     const inputPath = path.join(uploadsDir, filename);
+
+//     await job.progress(20);
+
+//     // create a PNG thumbnail as a fallback by rendering a small SVG
+//     const baseName = filename.replace(/\.[^.]+$/, '');
+//     const thumbFilename = `thumb_${baseName}.png`;
+//     const thumbnailPath = path.join(thumbnailsDir, thumbFilename);
+
+//     const svg = `
+//     <svg width="800" height="1000" xmlns="http://www.w3.org/2000/svg">
+//       <rect width="100%" height="100%" fill="#f8fafc" />
+//       <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="36" fill="#111827" font-family="Arial, Helvetica, sans-serif">PDF Preview</text>
+//       <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="20" fill="#6b7280">${filename}</text>
+//     </svg>`;
+
+//     await sharp(Buffer.from(svg)).png().toFile(thumbnailPath);
+
+//     await job.progress(60);
+
+//     // copy original PDF to optimized folder (keep original as preview source)
+//     const optimizedPath = path.join(optimizedDir, filename);
+//     try {
+//       await fs.copyFile(inputPath, optimizedPath);
+//     } catch (e) {
+//       this.logger.warn(
+//         `Could not copy PDF to optimized folder: ${e?.message ?? e}`,
+//       );
+//     }
+
+//     // save Asset to database
+//     const asset = this.assetRepository.create({
+//       filename,
+//       file_type: mimetype,
+//       file_size: size,
+//       path: inputPath,
+//       create_by: userId,
+//       status: AssetStatus.ACTIVE,
+//     });
+
+//     const savedAsset = await this.assetRepository.save(asset);
+
+//     // metadata entries
+//     const metadataEntries = [
+//       { meta_key: 'format', meta_value: 'pdf' },
+//       {
+//         meta_key: 'thumbnail_path',
+//         meta_value: `thumbnails/${thumbFilename}`,
+//       },
+//       { meta_key: 'optimized_path', meta_value: `optimized/${filename}` },
+//     ];
+
+//     // Ensure metadata fields exist and map entries to AssetMetadata with field relation
+//     const keys = metadataEntries.map((e) => e.meta_key);
+//     const existingFields = await this.metadataFieldRepository.find({
+//       where: { name: In(keys) },
+//     });
+
+//     const fieldsByName: Record<string, MetadataField> = {};
+//     for (const f of existingFields) fieldsByName[f.name] = f;
+
+//     const toCreateFields = keys.filter((k) => !fieldsByName[k]);
+//     for (const name of toCreateFields) {
+//       const newField = this.metadataFieldRepository.create({
+//         name,
+//         type: MetadataFieldType.TEXT,
+//         options: null,
+//       });
+//       const savedField = await this.metadataFieldRepository.save(newField);
+//       fieldsByName[savedField.name] = savedField;
+//     }
+
+//     const assetMetadataEntities = metadataEntries.map((entry) => {
+//       const field = fieldsByName[entry.meta_key];
+//       return this.metadataRepository.create({
+//         asset: savedAsset,
+//         field: field,
+//         value: entry.meta_value,
+//       });
+//     });
+
+//     await this.metadataRepository.save(assetMetadataEntities);
+
+//     await job.progress(100);
+
+//     return {
+//       success: true,
+//       assetId: savedAsset.id,
+//       filename,
+//       thumbnail: `thumbnails/${thumbFilename}`,
+//       optimized: `optimized/${filename}`,
+//       metadata: {
+//         format: 'pdf',
+//       },
+//     };
+//   } catch (error) {
+//     this.logger.error(
+//       `Error processing PDF: ${error?.message ?? error}`,
+//       error?.stack,
+//     );
+//     throw error;
+//   }
+// }

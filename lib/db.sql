@@ -40,6 +40,7 @@ create table assets (
 create table metadata_fields (
 	id SERIAL primary key,
 	name varchar(100) UNIQUE NOT NULL,
+	name_th varchar(100) NOT NULL,
 	type varchar(20) check (type IN ('text', 'number', 'date', 'select', 'boolean')) NOT NULL,
 	options varchar(255),
 	created_at TIMESTAMP DEFAULT now(),
