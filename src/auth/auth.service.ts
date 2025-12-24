@@ -7,29 +7,30 @@ import { CreateUserDto } from '../users/dto/create-user.dto';
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
-    private readonly jwtService: JwtService,
+    private usersService: UsersService,
+    private jwtService: JwtService,
   ) {}
 
   async validateUser(username: string, password: string) {
-    if (!password) {
-      console.warn('validateUser: no password provided');
-      return null;
-    }
-    
     const user = await this.usersService.findByUsername(username);
-    console.log("User found:", user);
-    if (!user) return null;
-    
-    // const ok = password === user.password;
+    if (!user) throw new UnauthorizedException();
 
     // Compare hashed passwords
-    const ok = await bcrypt.compare(password, user.password);
-    console.log("Password check:", ok);
-    if (!ok) return null;
+    const match = await bcrypt.compare(password, user.password);
+    console.log("Password check:", match );
+    if (!match) throw new UnauthorizedException();
+
     const { password: _pw, ...safe } = user;
     console.log('Validated user:', safe);
     return safe;
+  }
+
+  async generateToken(user: any) {
+    return this.jwtService.sign({
+      sub: user.id,
+      username: user.username,
+      role: user.role,
+    });
   }
 
   async login(dto: { username: string; password: string }) {
