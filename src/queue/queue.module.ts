@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from 'node_modules/@nestjs/bull';
+import { BullModule } from '@nestjs/bull';
 
 //จัดการ background jobs => processing asset
 @Module({

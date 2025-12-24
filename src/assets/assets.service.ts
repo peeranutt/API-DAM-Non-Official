@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue} from '@nestjs/bull';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import type { Queue } from 'bull';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Asset, AssetStatus } from './entities/asset.entity';
 import { MetadataField } from './entities/metadata-field.entity';
 import { AssetMetadata } from './entities/asset-metadata.entity';
@@ -30,9 +32,20 @@ export class AssetsService {
       userId,
     };
     // choose job type based on mimetype
-    let jobName = 'process-image';
-    if (file.mimetype === 'application/pdf') jobName = 'process-pdf';
-    else if (file.mimetype && file.mimetype.startsWith('video/')) jobName = 'process-video';
+    // let jobName = 'process-image';
+    // if (file.mimetype === 'application/pdf') jobName = 'process-pdf';
+    // else if (file.mimetype && file.mimetype.startsWith('video/')) jobName = 'process-video';
+
+    let jobName: string;
+
+    if (file.mimetype.startsWith('image/')) {
+      jobName = 'process-image';
+    } else if (file.mimetype.startsWith('video/')) {
+      jobName = 'process-video';
+    } else {
+      console.log('Processing as document');
+      jobName = 'process-document';
+    }
 
     const job = await this.assetQueue.add(jobName, jobData, {
       attempts: 3,
@@ -68,19 +81,89 @@ export class AssetsService {
   }
 
   async saveAssetMetadata(
-    assetId: number,
-    metadataList: { fieldId: number; value: string }[],
-  ) {
-    const metadata = metadataList.map((item) =>
-      this.assetMetadataRepository.create({
-        asset_id: assetId,
-        field_id: item.fieldId,
-        value: item.value,
-      }),
-    );
+  assetId: number,
+  metadata: { fieldId: number; value: string }[],
+) {
+  const asset = await this.assetRepository.findOne({
+    where: { id: assetId },
+  });
 
-    return await this.assetMetadataRepository.save(metadata);
+  if (!asset) {
+    throw new NotFoundException('Asset not found');
   }
+
+  /** -----------------------------
+   * 1️⃣ โหลด metadata_fields
+   * ----------------------------- */
+  const fieldIds = metadata.map((m) => m.fieldId);
+
+  const fields = await this.metadataFieldRepository.find({
+    where: { id: In(fieldIds) },
+  });
+
+  const fieldsById = Object.fromEntries(
+    fields.map((f) => [f.id, f]),
+  );
+
+  /** -----------------------------
+   * 2️⃣ โหลด asset_metadata เดิม
+   * ----------------------------- */
+  const existingMetadata = await this.assetMetadataRepository.find({
+    where: {
+      asset: { id: assetId },
+      field: { id: In(fieldIds) },
+    },
+    relations: ['field'],
+  });
+
+  const existingByFieldId = Object.fromEntries(
+    existingMetadata.map((m) => [m.field.id, m]),
+  );
+
+  /** -----------------------------
+   * 3️⃣ update / insert metadata
+   * ----------------------------- */
+  let newTitle: string | null = null;
+
+  for (const { fieldId, value } of metadata) {
+    const field = fieldsById[fieldId];
+    if (!field) continue;
+
+    // 🔥 ถ้าเป็น title → เก็บไว้ไป update asset
+    if (field.name === 'title') {
+      newTitle = value;
+    }
+
+    const existing = existingByFieldId[fieldId];
+
+    if (existing) {
+      existing.value = value;
+      await this.assetMetadataRepository.save(existing);
+    } else {
+      await this.assetMetadataRepository.save(
+        this.assetMetadataRepository.create({
+          asset,
+          field,
+          value,
+        }),
+      );
+    }
+  }
+
+  /** -----------------------------
+   * 4️⃣ update asset (title + updated_at)
+   * ----------------------------- */
+  const assetUpdate: Partial<Asset> = {
+    updated_at: new Date(), // ✅ update timestamp
+  };
+
+  if (newTitle !== null && newTitle !== '') {
+    assetUpdate.filename = newTitle; // ✅ sync title → filename
+  }
+
+  await this.assetRepository.update(assetId, assetUpdate);
+}
+
 
   async getJobStatus(jobId: string) {
     const job = await this.assetQueue.getJob(jobId);
@@ -102,8 +185,9 @@ export class AssetsService {
     };
   }
 
-  async findAll() {
-    return await this.assetRepository.find({ relations: ['metadata'] });
+  async findAll(): Promise<Asset[]> {
+    // ดึง Asset ทั้งหมดจากฐานข้อมูล
+    return this.assetRepository.find(); 
   }
 
   async findOne(id: number) {
@@ -113,8 +197,99 @@ export class AssetsService {
     });
   }
 
+  async getFileStream(
+    id: string,
+  ): Promise<{ readStream: fs.ReadStream; fileMimeType: string; fileName: string }> {
+    const assetId = parseInt(id, 10);
+    
+    const asset = await this.assetRepository.findOne({ where: { id: assetId } });
+    
+    if (!asset) {
+      throw new NotFoundException(`Asset with ID ${id} not found`);
+    }
+
+    const filePath = path.join(process.cwd(), asset.path);
+
+    //สำหรับ Debugging สามารถลบทิ้งได้หลังจากแก้ไขเสร็จ
+    console.log(`Attempting to read file at path: ${filePath}`); 
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException(`Asset file for ID ${id} not found on disk`);
+    }
+
+    const readStream = fs.createReadStream(filePath);
+
+    return {
+      readStream: readStream,
+      fileMimeType: asset.file_type, 
+      fileName: asset.filename, 
+    };
+  }
+
   async getMetadataFields() {
     return await this.metadataFieldRepository.find();
+  }
+
+  async getAssetForDownload(id: number){
+    const asset = await this.assetRepository.findOne({
+      where: { id },
+    });
+
+    if (!asset) return null;
+
+    const fullPath = path.resolve(asset.path);
+
+    if (!fs.existsSync(fullPath)) {
+      return null;
+    }
+
+    return {
+      fullPath,
+      original_name: asset.original_name
+    }
+  }
+
+  async searchByFilters(filters: any) {
+    const { name, type, collection, dateRange, keywords } = filters;
+    
+    let query = this.assetRepository.createQueryBuilder('asset');
+
+    if (name) {
+      query.andWhere('asset.name LIKE :name', { name: `%${name}%` });
+    }
+
+    if (type) {
+      query.andWhere('asset.type = :type', { type });
+    }
+
+    if (collection) {
+      query.andWhere('asset.collection = :collection', { collection });
+    }
+
+    if (dateRange && dateRange.start && dateRange.end) {
+      query.andWhere('asset.updatedAt BETWEEN :start AND :end', {
+        start: dateRange.start,
+        end: dateRange.end,
+      });
+    }
+
+    if (keywords && keywords.length > 0) {
+      query.andWhere('asset.keywords && :keywords', { keywords });
+    }
+
+    return query.getMany();
+  }
+
+  async getSearchSuggestions(query: string) {
+    const suggestions = await this.assetRepository
+      .createQueryBuilder('asset')
+      .select(['DISTINCT asset.name', 'asset.type', 'asset.collection'])
+      .where('asset.name ILIKE :query', { query: `%${query}%` })
+      .orWhere('asset.collection ILIKE :query', { query: `%${query}%` })
+      .limit(10)
+      .getRawMany();
+
+    return suggestions;
   }
 
   create(createAssetDto: CreateAssetDto) {

@@ -2,6 +2,9 @@
 /dist
 /node_modules
 /build
+/uploads
+
+run-docker.txt
 
 # Logs
 logs

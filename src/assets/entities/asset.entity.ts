@@ -25,7 +25,19 @@ export class Asset {
     type: 'varchar',
     length: 255,
   })
+  original_name: string;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+  })
   filename: string;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+  })
+  thumbnail: string;
 
   @Column({
     type: 'varchar',
@@ -43,6 +55,13 @@ export class Asset {
     type: 'varchar',
   })
   path: string;
+
+  @Column(
+    "text", { 
+      array: true, 
+      nullable: true 
+    })
+  keywords: string[];
 
   @Column({
     type: 'enum',
