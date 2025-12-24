@@ -9,6 +9,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Res,
+  Req,
   Put,
   NotFoundException,
   UploadedFiles,
@@ -16,7 +17,7 @@ import {
 import { AssetsService } from './assets.service';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
-import { FileInterceptor, FilesInterceptor  } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import iconv from 'iconv-lite';
@@ -65,22 +66,24 @@ export class AssetsController {
   )
   async uploadMultiple(
     @UploadedFiles() files: Express.Multer.File[],
-    @Res() req: Request,
+    @Req() req: Request,
   ) {
     const userId = (req as any).user.id;
+    console.log("userId", userId);
 
     console.log('file now:', files);
     const jobs = await Promise.all(
-    files.map((file) =>
-      this.assetsService.processAsset(file, userId),
-    ),
-  );
+      files.map((file) => this.assetsService.processAsset(file, userId)),
+    );
 
-  return {
-    success: true,
-    count: files.length,
-    jobs: jobs.map((job) => job.id),
-  };
+    return {
+      success: true,
+      count: files.length,
+      jobs: jobs.map(job => ({
+      jobId: job.id,
+      filename: job.data.filename,
+    })),
+    };
   }
 
   @Put(':assetId/metadata')

@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 // import { CreateAuthDto } from './dto/create-auth.dto';
 // import { UpdateAuthDto } from './dto/update-auth.dto';
@@ -29,10 +30,39 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body() loginDto: LoginDto){
-    console.log('Received login request for user:', loginDto.username);
-    const user = await this.authService.login(loginDto);
-    return {success: true, user};
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const user = await this.authService.validateUser(
+      dto.username,
+      dto.password,
+    );
+
+    const token = await this.authService.generateToken(user);
+
+    res.cookie('access_token', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false, // true เมื่อใช้ https
+      maxAge: 6 * 60 * 60 * 1000,
+    });
+
+    return {
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+      },
+    };
+  }
+
+
+  @Post('logout')
+  async logout(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie('access_token');
+    return { success: true };
   }
 
 //   @Post()
