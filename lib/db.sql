@@ -1,3 +1,6 @@
+-- DROP SCHEMA public CASCADE;
+-- CREATE SCHEMA public;
+
 create table users (
 	id SERIAL primary key,
 	username varchar(100) UNIQUE NOT NULL,
@@ -89,17 +92,18 @@ create table activity_logs (
 	created_at TIMESTAMP DEFAULT now()
 );
 
-INSERT INTO metadata_fields (name, type, options) VALUES
-('assetCode', 'text', NULL),
-('category', 'select', 'image,video,document,other'),
-('title', 'text', NULL),
-('keywords', 'text', NULL),
-('description', 'text', NULL),
-('createDate', 'date', NULL),
-('userKeywords', 'text', NULL),
-('collectionId', 'text', NULL),
-('notes', 'text', NULL),
-('accessRights', 'select', 'public,private'),
-('owner', 'text', NULL),
-('modifiedDate', 'date', NULL),
-('status', 'select', 'active,deleted');
+INSERT INTO metadata_fields (name, name_th, type, options) VALUES
+('assetCode', 'รหัสทรัพยากร', 'text', NULL),
+('category', 'ประเภท', 'select', 'image,video,document,other'),
+('title', 'ชื่อสินค้า', 'text', NULL),
+('keywords', 'คำสำคัญ', 'text', NULL),
+('description', 'รายละเอียดสินค้า', 'text', NULL),
+('createDate', 'วันที่สร้าง', 'date', NULL),
+('userKeywords', 'คำค้นหาผู้ใช้', 'text', NULL),
+('collectionId', 'รหัสคอลเลกชัน', 'text', NULL),
+('notes', 'หมายเหตุ', 'text', NULL),
+('accessRights', 'สิทธิ์การเข้าถึง', 'select', 'public,private'),
+('owner', 'เจ้าของ', 'text', NULL),
+('modifiedDate', 'วันที่แก้ไข', 'date', NULL),
+('status', 'สถานะ', 'select', 'active,deleted'),
+('path', 'ตำแหน่งไฟล์', 'text', NULL);

@@ -11,27 +11,33 @@ import {
   Res,
   Put,
   NotFoundException,
+  UploadedFiles,
 } from '@nestjs/common';
 import { AssetsService } from './assets.service';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor  } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import iconv from 'iconv-lite';
 import type { Response } from 'express';
 import * as path from 'path';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import * as fs from 'fs';
 
+import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
 @Controller('assets')
 export class AssetsController {
   constructor(private readonly assetsService: AssetsService) {}
 
   @Post('upload')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
-    FileInterceptor('file', {
+    FilesInterceptor('file', 10, {
       storage: diskStorage({
         destination: './uploads',
         filename: (req, file, cb) => {
+          console.log('Original filename:', file.originalname);
           // ชื่อไฟล์
           let originalname = file.originalname;
           try {
@@ -52,24 +58,29 @@ export class AssetsController {
           const uniqueName = baseName + '-' + uniqueSuffix;
 
           cb(null, uniqueName + fileExtName);
+          console.log('Saved file as:', uniqueName + fileExtName);
         },
       }),
     }),
   )
-  async uploadSingle(@UploadedFile() file: Express.Multer.File) {
-    console.log('Original filename:', file.originalname); // ควรเป็นชื่อภาษาไทยที่ถูกต้อง
-    console.log('Saved filename:', file.filename); // ชื่อไฟล์ที่บันทึก
+  async uploadMultiple(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Res() req: Request,
+  ) {
+    const userId = (req as any).user.id;
 
-    console.log('file now:', file);
-    const job = await this.assetsService.processAsset(file, 1); // userId hardcoded as 1 for now
-    console.log('job now:', job);
-    return {
-      success: true,
-      jobId: job.id,
-      filename: file.filename,
-      originalFilename: file.originalname,
-      message: 'File uploaded and queued for processing',
-    };
+    console.log('file now:', files);
+    const jobs = await Promise.all(
+    files.map((file) =>
+      this.assetsService.processAsset(file, userId),
+    ),
+  );
+
+  return {
+    success: true,
+    count: files.length,
+    jobs: jobs.map((job) => job.id),
+  };
   }
 
   @Put(':assetId/metadata')

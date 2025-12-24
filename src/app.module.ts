@@ -10,28 +10,30 @@ import { QueueModule } from './queue/queue.module';
 import { SearchModule } from './search/search.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({
-    isGlobal: true,
-  }),
-  TypeOrmModule.forRoot({
-    type: 'postgres',
-    host: process.env.DATABASE_HOST,
-    port: Number(process.env.DATABASE_PORT) || 5432,
-    username: process.env.DATABASE_USER,
-    password: process.env.DATABASE_PASSWORD,
-    database: process.env.DATABASE_NAME,
-    entities: [__dirname + '/**/*.entity{.ts,.js}'],
-    retryAttempts: 10,
-    retryDelay: 3000,
-    synchronize: true,
-    logging: true, // เปิดดู SQL / connection logs
-    logger: 'advanced-console',
-  }),
-  UsersModule,
-  AuthModule,
-  AssetsModule,
-  QueueModule,
-  SearchModule,
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DATABASE_HOST,
+      port: Number(process.env.DATABASE_PORT) || 5432,
+      username: process.env.DATABASE_USER,
+      password: process.env.DATABASE_PASSWORD,
+      database: process.env.DATABASE_NAME,
+      entities: [__dirname + '/**/*.entity{.ts,.js}'],
+      retryAttempts: 10,
+      retryDelay: 3000,
+      synchronize: false,
+      migrationsRun: true,
+      logging: true, // เปิดดู SQL / connection logs
+      logger: 'advanced-console',
+    }),
+    UsersModule,
+    AuthModule,
+    AssetsModule,
+    QueueModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
