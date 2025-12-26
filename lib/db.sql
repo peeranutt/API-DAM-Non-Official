@@ -37,7 +37,9 @@ create table assets (
 	path varchar NOT NULL,
 	keywords TEXT[],
 	status varchar(20) check (status IN ('active', 'deleted')) NOT NULL,
-	create_by int references users(id),
+	create_by int not null references users(id),
+	group_id int references user_groups(id),
+	visibility varchar(20) check (visibility in ('personal','group')),
 	created_at TIMESTAMP DEFAULT now(),
 	updated_at TIMESTAMP DEFAULT now()
 );
