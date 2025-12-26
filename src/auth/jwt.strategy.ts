@@ -13,8 +13,10 @@ const cookieExtractor = (req: Request): string | null => {
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
+    console.log('JWT strategy initialized');
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
         (req: Request) => cookieExtractor(req),
       ]),
       ignoreExpiration: false,
@@ -24,10 +26,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: any) {
     console.log('JWT PAYLOAD =', payload);
-    return { 
-      id: payload.sub, 
+    return {
+      id: payload.id,
       username: payload.username,
       role: payload.role,
-     };
+    };
   }
 }
