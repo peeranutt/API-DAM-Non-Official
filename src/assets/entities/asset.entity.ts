@@ -9,6 +9,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Group } from '../../groups/entities/group.entity';
 import { AssetMetadata } from './asset-metadata.entity';
 
 export enum AssetStatus {
@@ -76,11 +77,21 @@ export class Asset {
   })
   create_by: number;
 
+  @Column({
+    type: 'int',
+    nullable: true,
+  })
+  group_id: number;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'create_by' })
   creator: User;
 
-  @OneToMany(() => AssetMetadata, (metadata) => metadata.asset, {
+  @ManyToOne(() => Group, { nullable: true })
+  @JoinColumn({ name: 'group_id' })
+  group: Group;
+
+  @OneToMany(() => AssetMetadata, (metadata: AssetMetadata) => metadata.asset, {
     cascade: true,
     eager: true,
   })

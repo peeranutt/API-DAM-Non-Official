@@ -14,6 +14,7 @@ import {
   NotFoundException,
   UploadedFiles,
   BadRequestException,
+  ForbiddenException,
   Query,
 } from '@nestjs/common';
 import { AssetsService } from './assets.service';
@@ -28,6 +29,7 @@ import * as path from 'path';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import * as fs from 'fs';
 import { sha256File } from './processeors/hash';
+import { GroupsService } from '../groups/groups.service';
 
 interface UploadJobResult {
   jobId: string;
@@ -38,7 +40,10 @@ interface UploadJobResult {
 import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
 @Controller('assets')
 export class AssetsController {
-  constructor(private readonly assetsService: AssetsService) {}
+  constructor(
+    private readonly assetsService: AssetsService,
+    private readonly groupsService: GroupsService,
+  ) {}
 
   @Post('upload')
   @UseGuards(JwtAuthGuard)
@@ -76,11 +81,18 @@ export class AssetsController {
   async uploadMultiple(
     @UploadedFiles() files: Express.Multer.File[],
     @Body('checksums') checksums: string[],
-    string,
+    @Body('groupId') groupId: string | undefined,
     @Req() req: Request,
   ) {
     const userId = (req as any).user.id;
-    console.log('userId', userId);
+
+    // If groupId is provided, check if user can upload to that group
+    if (groupId) {
+      const canUpload = await this.assetsService.canUserUploadToGroup(+groupId, userId);
+      if (!canUpload) {
+        throw new BadRequestException('You do not have permission to upload to this group');
+      }
+    }
 
     const checksumArray = Array.isArray(checksums) ? checksums : [checksums];
 
@@ -105,7 +117,7 @@ export class AssetsController {
       }
 
       // checksum ตรง
-      const job = await this.assetsService.processAsset(file, userId);
+      const job = await this.assetsService.processAsset(file, userId, groupId ? +groupId : undefined);
       jobs.push({
         jobId: String(job.id),
         filename: file.originalname,
@@ -136,16 +148,28 @@ export class AssetsController {
   }
 
   @Get()
-  async findAll() {
-    return this.assetsService.findAll();
+  @UseGuards(JwtAuthGuard)
+  async findAll(@Req() req: Request) {
+    const userId = (req as any).user.id;
+    return this.assetsService.findAll(userId);
   }
 
   @Get('file/:id')
+  @UseGuards(JwtAuthGuard)
   async getFile(
     @Param('id') id: string,
     @Query('type') type: 'thumb' | 'original',
     @Res() res: Response,
+    @Req() req: Request,
   ) {
+    const userId = (req as any).user.id;
+
+    // Check if user can access this asset
+    const canAccess = await this.assetsService.canUserAccessAsset(+id, userId);
+    if (!canAccess) {
+      return res.status(403).send('You do not have permission to access this asset');
+    }
+
     try {
       const { readStream, fileMimeType, fileName } =
         await this.assetsService.getFileStream(id, type);
@@ -168,7 +192,16 @@ export class AssetsController {
   }
 
   @Get(':id/download')
-  async downloadAsset(@Param('id') id: number, @Res() res: Response) {
+  @UseGuards(JwtAuthGuard)
+  async downloadAsset(@Param('id') id: number, @Res() res: Response, @Req() req: Request) {
+    const userId = (req as any).user.id;
+
+    // Check if user can access this asset
+    const canAccess = await this.assetsService.canUserAccessAsset(id, userId);
+    if (!canAccess) {
+      return res.status(403).send('You do not have permission to access this asset');
+    }
+
     const asset = await this.assetsService.getAssetForDownload(id);
 
     if (!asset) {
@@ -179,8 +212,22 @@ export class AssetsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.assetsService.findOne(+id);
+  @UseGuards(JwtAuthGuard)
+  async findOne(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req as any).user.id;
+    const asset = await this.assetsService.findOne(+id);
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Check if user can access this asset
+    const canAccess = await this.assetsService.canUserAccessAsset(+id, userId);
+    if (!canAccess) {
+      throw new ForbiddenException('You do not have permission to access this asset');
+    }
+
+    return asset;
   }
 
   @Patch(':id')
