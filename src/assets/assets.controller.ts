@@ -14,6 +14,7 @@ import {
   NotFoundException,
   UploadedFiles,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 import { AssetsService } from './assets.service';
 import { CreateAssetDto } from './dto/create-asset.dto';
@@ -96,14 +97,14 @@ export class AssetsController {
       const serverHash = await sha256File(file.path);
 
       if (clientHash !== serverHash) {
-        // ❌ ไฟล์เสีย / upload ไม่ครบ
+        // ไฟล์เสีย / upload ไม่ครบ
         fs.unlinkSync(file.path);
         throw new BadRequestException(
           `Checksum mismatch: ${file.originalname}`,
         );
       }
 
-      // ✅ checksum ตรง → process ต่อ
+      // checksum ตรง
       const job = await this.assetsService.processAsset(file, userId);
       jobs.push({
         jobId: String(job.id),
@@ -140,17 +141,25 @@ export class AssetsController {
   }
 
   @Get('file/:id')
-  async getFile(@Param('id') id: string, @Res() res: Response) {
+  async getFile(
+    @Param('id') id: string,
+    @Query('type') type: 'thumb' | 'original',
+    @Res() res: Response,
+  ) {
     try {
       const { readStream, fileMimeType, fileName } =
-        await this.assetsService.getFileStream(id);
+        await this.assetsService.getFileStream(id, type);
+
+      const encodedFilename = encodeURIComponent(fileName);
 
       if (!readStream) {
         return res.status(404).send('Asset file not found');
       }
 
       res.setHeader('Content-Type', fileMimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+      res.setHeader(
+        'Content-Disposition', 
+        `inline; filename="file"; filename*=UTF-8''${encodedFilename}`,);
       readStream.pipe(res);
     } catch (error) {
       console.error('Error serving asset file:', error);

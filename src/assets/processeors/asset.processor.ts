@@ -12,6 +12,7 @@ import {
   MetadataField,
   MetadataFieldType,
 } from '../entities/metadata-field.entity';
+import { generateImageThumbnail } from '../utils/image-thumbnail';
 import { generateVideoThumbnail } from '../utils/video-thumbnail';
 import {
   pdfToThumbnail,
@@ -41,8 +42,6 @@ export interface AssetJobData {
   status?: string;
 }
 
-// check sum ว่าครบไหม ใช้พวก md5 หรือ sha256 มาเช็ก sum file ก่อนส่ง และ file ปลายทาง
-// pixxee
 @Processor('assets')
 export class AssetProcessor {
   private readonly logger = new Logger(AssetProcessor.name);
@@ -56,49 +55,8 @@ export class AssetProcessor {
     private metadataFieldRepository: Repository<MetadataField>,
   ) {}
 
-  // ไฟล์รูปภาพ
-  @Process('process-image')
-  async handleImageProcessing(job: Job<AssetJobData>) {
-    const {
-      filename,
-      mimetype,
-      size,
-      userId,
-      assetCode,
-      category,
-      title,
-      keywords,
-      description,
-      createDate,
-      userKeywords,
-      collectionId,
-      notes,
-      accessRights,
-      owner,
-      modifiedDate,
-      status,
-    } = job.data;
-
-    /** -----------------------------
-     * 1️⃣ CREATE ASSET
-     * ----------------------------- */
-    const asset = this.assetRepository.create({
-      filename,
-      original_name: filename,
-      thumbnail: `thumbnails/thumb_${filename}`,
-      file_type: mimetype,
-      file_size: size,
-      path: `./uploads/${filename}`,
-      keywords: keywords ? keywords.split(',') : [],
-      create_by: userId,
-      status: AssetStatus.ACTIVE,
-    });
-
-    const savedAsset = await this.assetRepository.save(asset);
-
-    /** -----------------------------
-     * 2️⃣ MAP METADATA FROM FORM
-     * ----------------------------- */
+  // บันทึก metadata
+  private async saveMetadata(savedAsset: Asset, job: Job<AssetJobData>) {
     const metadataMap: Record<string, string> = {
       assetCode: savedAsset.id.toString(),
       category: savedAsset.file_type,
@@ -119,9 +77,6 @@ export class AssetProcessor {
       .filter(([_, value]) => value !== '')
       .map(([name, value]) => ({ name, value }));
 
-    /** -----------------------------
-     * 3️⃣ LOAD METADATA_FIELDS
-     * ----------------------------- */
     const fieldNames = metadataEntries.map((m) => m.name);
 
     const fields = await this.metadataFieldRepository.find({
@@ -130,9 +85,6 @@ export class AssetProcessor {
 
     const fieldsByName = Object.fromEntries(fields.map((f) => [f.name, f]));
 
-    /** -----------------------------
-     * 4️⃣ CREATE ASSET_METADATA
-     * ----------------------------- */
     const assetMetadataEntities = metadataEntries
       .map((entry) => {
         const field = fieldsByName[entry.name];
@@ -147,6 +99,46 @@ export class AssetProcessor {
       .filter((m): m is AssetMetadata => m !== null);
 
     await this.metadataRepository.save(assetMetadataEntities);
+  }
+
+  // ไฟล์รูปภาพ
+  @Process('process-image')
+  async handleImageProcessing(job: Job<AssetJobData>) {
+    const { filename, size, userId, mimetype, keywords } = job.data;
+
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
+
+    const imagePath = path.join(uploadsDir, filename);
+
+    await job.progress(20);
+
+    const thumbnailFilename = await generateImageThumbnail(
+      imagePath,
+      thumbnailsDir,
+      filename,
+    );
+
+    await job.progress(60);
+
+    /**CREATE ASSET**/
+    const asset = this.assetRepository.create({
+      filename,
+      original_name: filename,
+      thumbnail: `uploads/thumbnails/${thumbnailFilename}`,
+      file_type: mimetype,
+      file_size: size,
+      path: `./uploads/${filename}`,
+      keywords: keywords ? keywords.split(',') : [],
+      create_by: userId,
+      status: AssetStatus.ACTIVE,
+    });
+
+    const savedAsset = await this.assetRepository.save(asset);
+
+    await this.saveMetadata(savedAsset, job);
+
+    await job.progress(100);
 
     return {
       success: true,
@@ -160,7 +152,7 @@ export class AssetProcessor {
     this.logger.log(`Processing video: ${job.data.filename}`);
 
     try {
-      const { filename, size, userId, mimetype } = job.data;
+      const { filename, size, userId, mimetype, keywords } = job.data;
 
       const uploadsDir = './uploads';
       const videoPath = path.join(uploadsDir, filename);
@@ -180,7 +172,7 @@ export class AssetProcessor {
       const asset = this.assetRepository.create({
         filename,
         original_name: filename,
-        thumbnail: `thumbnails/thumb_${filename}`,
+        thumbnail: `${thumbnailPath}`,
         file_type: mimetype,
         file_size: size,
         path: `./uploads/${filename}`,
@@ -190,6 +182,8 @@ export class AssetProcessor {
       });
 
       const savedAsset = await this.assetRepository.save(asset);
+
+      await this.saveMetadata(savedAsset, job);
 
       await job.progress(100);
 
@@ -246,7 +240,7 @@ export class AssetProcessor {
       const asset = this.assetRepository.create({
         filename,
         original_name: filename,
-        thumbnail: `thumbnails/thumb_${filename}`,
+        thumbnail: `uploads/thumbnails/thumb_${filename}`,
         file_type: mimetype,
         file_size: size,
         path: inputPath,
@@ -256,6 +250,8 @@ export class AssetProcessor {
       });
 
       const savedAsset = await this.assetRepository.save(asset);
+
+      await this.saveMetadata(savedAsset, job);
 
       await job.progress(100);
 

@@ -198,33 +198,48 @@ export class AssetsService {
   }
 
   async getFileStream(
-    id: string,
-  ): Promise<{ readStream: fs.ReadStream; fileMimeType: string; fileName: string }> {
-    const assetId = parseInt(id, 10);
-    
-    const asset = await this.assetRepository.findOne({ where: { id: assetId } });
-    
-    if (!asset) {
-      throw new NotFoundException(`Asset with ID ${id} not found`);
-    }
+  id: string,
+  type: 'thumb' | 'original' = 'thumb',
+): Promise<{
+  readStream: fs.ReadStream;
+  fileMimeType: string;
+  fileName: string;
+}> {
+  const assetId = Number(id);
 
-    const filePath = path.join(process.cwd(), asset.path);
+  const asset = await this.assetRepository.findOne({
+    where: { id: assetId },
+  });
 
-    //สำหรับ Debugging สามารถลบทิ้งได้หลังจากแก้ไขเสร็จ
-    console.log(`Attempting to read file at path: ${filePath}`); 
-
-    if (!fs.existsSync(filePath)) {
-      throw new NotFoundException(`Asset file for ID ${id} not found on disk`);
-    }
-
-    const readStream = fs.createReadStream(filePath);
-
-    return {
-      readStream: readStream,
-      fileMimeType: asset.file_type, 
-      fileName: asset.filename, 
-    };
+  if (!asset) {
+    throw new NotFoundException(`Asset ${id} not found`);
   }
+
+  const relativePath =
+    type === 'thumb' && asset.thumbnail
+      ? asset.thumbnail
+      : asset.path;
+
+  const filePath = path.join(process.cwd(), relativePath);
+
+  console.log('Serving file:', filePath);
+
+  if (!fs.existsSync(filePath)) {
+    throw new NotFoundException('File not found on disk');
+  }
+
+  const mimeType =
+    type === 'thumb'
+      ? 'image/png'
+      : asset.file_type;
+
+  return {
+    readStream: fs.createReadStream(filePath),
+    fileMimeType: mimeType,
+    fileName: path.basename(filePath),
+  };
+}
+
 
   async getMetadataFields() {
     return await this.metadataFieldRepository.find();
