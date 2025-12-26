@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Res, Req } from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 // import { CreateAuthDto } from './dto/create-auth.dto';
@@ -6,6 +6,8 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { UsersService } from 'src/users/users.service';
+import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -58,11 +60,17 @@ export class AuthController {
     };
   }
 
-
   @Post('logout')
   async logout(@Res({ passthrough: true }) res: Response) {
     res.clearCookie('access_token');
     return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('user')
+  getProfile(@Req() req) {
+    console.log('AuthController.getProfile user:', req.user);
+    return req.user;
   }
 
 //   @Post()
