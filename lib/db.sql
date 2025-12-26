@@ -7,7 +7,6 @@ create table users (
 	password varchar(255) NOT NULL,
 	email varchar(100) UNIQUE NOT NULL,
 	fullname varchar(100) NOT NULL,
-	role varchar(20) check (role IN ('admin', 'edit', 'viewer')) NOT NULL,
 	last_login TIMESTAMP,
 	created_at TIMESTAMP DEFAULT now(),
 	updated_at TIMESTAMP DEFAULT now()
@@ -21,10 +20,12 @@ create table user_groups (
 );
 create table group_members (
 	id SERIAL primary key,
-	group_id int references user_groups(id),
-	user_id int references users(id),
-	role varchar(20) check (role IN ('member', 'manager')),
-	added_at TIMESTAMP DEFAULT now()
+	group_id int NOT NULL references user_groups(id) on delete cascade,
+	user_id int NOT NULL references users(id) on delete cascade,
+	role varchar(20) NOT NULL
+		check (role IN ('owner', 'manager', 'member', 'viewer')),
+	added_at TIMESTAMP DEFAULT now(),
+	unique (group_id, user_id)
 );
 create table assets (
 	id SERIAL primary key,
@@ -95,9 +96,9 @@ create table activity_logs (
 INSERT INTO metadata_fields (name, name_th, type, options) VALUES
 ('assetCode', 'รหัสทรัพยากร', 'text', NULL),
 ('category', 'ประเภท', 'select', 'image,video,document,other'),
-('title', 'ชื่อสินค้า', 'text', NULL),
+('title', 'ชื่อ', 'text', NULL),
 ('keywords', 'คำสำคัญ', 'text', NULL),
-('description', 'รายละเอียดสินค้า', 'text', NULL),
+('description', 'รายละเอียด', 'text', NULL),
 ('createDate', 'วันที่สร้าง', 'date', NULL),
 ('userKeywords', 'คำค้นหาผู้ใช้', 'text', NULL),
 ('collectionId', 'รหัสคอลเลกชัน', 'text', NULL),
