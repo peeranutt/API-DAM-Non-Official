@@ -3,5 +3,4 @@ export class UpdateUserDto {
   password: string;
   email: string;
   fullname: string;
-  role?: 'admin' | 'edit' | 'viewer';
 }
