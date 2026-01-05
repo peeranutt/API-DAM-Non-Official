@@ -26,6 +26,7 @@ export interface AssetJobData {
   mimetype: string;
   size: number;
   userId?: number;
+  groupId?: number;
 
   assetCode?: string;
   category?: string;
@@ -104,7 +105,7 @@ export class AssetProcessor {
   // ไฟล์รูปภาพ
   @Process('process-image')
   async handleImageProcessing(job: Job<AssetJobData>) {
-    const { filename, size, userId, mimetype, keywords } = job.data;
+    const { filename, size, userId, groupId, mimetype, keywords } = job.data;
 
     const uploadsDir = path.join(process.cwd(), 'uploads');
     const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
@@ -131,6 +132,7 @@ export class AssetProcessor {
       path: `./uploads/${filename}`,
       keywords: keywords ? keywords.split(',') : [],
       create_by: userId,
+      group_id: groupId,
       status: AssetStatus.ACTIVE,
     });
 
@@ -152,7 +154,7 @@ export class AssetProcessor {
     this.logger.log(`Processing video: ${job.data.filename}`);
 
     try {
-      const { filename, size, userId, mimetype, keywords } = job.data;
+      const { filename, size, userId, groupId, mimetype, keywords } = job.data;
 
       const uploadsDir = './uploads';
       const videoPath = path.join(uploadsDir, filename);
@@ -178,6 +180,7 @@ export class AssetProcessor {
         path: `./uploads/${filename}`,
         keywords: [],
         create_by: userId,
+        group_id: groupId,
         status: AssetStatus.ACTIVE,
       });
 
@@ -205,7 +208,7 @@ export class AssetProcessor {
   @Process('process-document')
   async handleDocumentProcessing(job: Job<AssetJobData>) {
     try {
-      const { filename, size, userId, mimetype } = job.data;
+      const { filename, size, userId, groupId, mimetype } = job.data;
 
       const uploadsDir = './uploads';
       const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
@@ -240,12 +243,13 @@ export class AssetProcessor {
       const asset = this.assetRepository.create({
         filename,
         original_name: filename,
-        thumbnail: `uploads/thumbnails/thumb_${filename}`,
+        thumbnail: `uploads/thumbnails/thumb_${baseName}.png`,
         file_type: mimetype,
         file_size: size,
         path: inputPath,
         keywords: [],
         create_by: userId,
+        group_id: groupId,
         status: AssetStatus.ACTIVE,
       });
 

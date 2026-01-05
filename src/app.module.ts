@@ -6,6 +6,8 @@ import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { AssetsModule } from './assets/assets.module';
+import { GroupsModule } from './groups/groups.module';
+import { CollectionsModule } from './collections/collections.module';
 import { QueueModule } from './queue/queue.module';
 import { SearchModule } from './search/search.module';
 
@@ -32,6 +34,8 @@ import { SearchModule } from './search/search.module';
     UsersModule,
     AuthModule,
     AssetsModule,
+    GroupsModule,
+    CollectionsModule,
     QueueModule,
     SearchModule,
   ],

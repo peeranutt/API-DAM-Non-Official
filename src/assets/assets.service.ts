@@ -11,6 +11,7 @@ import { AssetMetadata } from './entities/asset-metadata.entity';
 import {AssetJobData} from './processeors/asset.processor';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
+import { GroupsService } from '../groups/groups.service';
 
 @Injectable()
 export class AssetsService {
@@ -21,15 +22,17 @@ export class AssetsService {
     private metadataFieldRepository: Repository<MetadataField>,
     @InjectRepository(AssetMetadata)
     private assetMetadataRepository: Repository<AssetMetadata>,
+    private groupsService: GroupsService,
   ) {}
 
-  async processAsset(file: Express.Multer.File, userId?: number) {
+  async processAsset(file: Express.Multer.File, userId?: number, groupId?: number) {
     const jobData: AssetJobData = {
       filename: file.filename,
       originalPath: file.path,
       mimetype: file.mimetype,
       size: file.size,
       userId,
+      groupId,
     };
     // choose job type based on mimetype
     // let jobName = 'process-image';
@@ -66,6 +69,7 @@ export class AssetsService {
     fileSize: number,
     filePath: string,
     userId?: number,
+    groupId?: number,
   ) {
     const assetPartial: Partial<Asset> = {
       filename,
@@ -73,6 +77,7 @@ export class AssetsService {
       file_size: fileSize,
       path: filePath,
       create_by: userId ?? 0,
+      group_id: groupId,
       status: AssetStatus.ACTIVE,
     };
 
@@ -185,9 +190,54 @@ export class AssetsService {
     };
   }
 
-  async findAll(): Promise<Asset[]> {
-    // ดึง Asset ทั้งหมดจากฐานข้อมูล
-    return this.assetRepository.find(); 
+  async canUserAccessAsset(assetId: number, userId: number): Promise<boolean> {
+    const asset = await this.assetRepository.findOne({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      return false;
+    }
+
+    // If it's a personal asset, only the creator can access it
+    if (!asset.group_id) {
+      return asset.create_by === userId;
+    }
+
+    // If it's a group asset, check if user is a member of the group
+    return await this.groupsService.canUserViewGroup(asset.group_id, userId);
+  }
+
+  async canUserUploadToGroup(groupId: number, userId: number): Promise<boolean> {
+    return await this.groupsService.canUserUploadToGroup(groupId, userId);
+  }
+
+  async findAll(userId: number): Promise<Asset[]> {
+    // Get user's groups
+    let groupIds: number[] = [];
+    try {
+      const userGroups = await this.groupsService.getUserGroups(userId);
+      groupIds = userGroups.map(group => group.id);
+    } catch (error) {
+      // If groups table doesn't exist yet, ignore and use only personal assets
+      console.warn('Groups service not available, using only personal assets');
+    }
+
+    // Find assets that are either:
+    // 1. Created by the user (personal assets)
+    // 2. Belong to groups where the user is a member
+    const whereCondition: any[] = [
+      { create_by: userId },
+    ];
+
+    if (groupIds.length > 0) {
+      whereCondition.push({ group_id: In(groupIds) });
+    }
+
+    return this.assetRepository.find({
+      where: whereCondition,
+      relations: ['creator'], // Temporarily remove 'group' until groups table is created
+    });
   }
 
   async findOne(id: number) {

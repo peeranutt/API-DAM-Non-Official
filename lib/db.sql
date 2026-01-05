@@ -15,6 +15,7 @@ create table user_groups (
 	id SERIAL primary key,
 	name varchar(100) NOT NULL,
 	description varchar(255),
+	created_by INT NOT NULL references users(id),
 	created_at TIMESTAMP DEFAULT now(),
 	updated_at TIMESTAMP DEFAULT now()
 );
@@ -22,9 +23,9 @@ create table group_members (
 	id SERIAL primary key,
 	group_id int NOT NULL references user_groups(id) on delete cascade,
 	user_id int NOT NULL references users(id) on delete cascade,
-	role varchar(20) NOT NULL
-		check (role IN ('owner', 'manager', 'member', 'viewer')),
-	added_at TIMESTAMP DEFAULT now(),
+	permission varchar(20) check (permission IN ('admin', 'member', 'viewer')) DEFAULT 'member',
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	unique (group_id, user_id)
 );
 create table assets (

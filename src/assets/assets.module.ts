@@ -7,6 +7,7 @@ import { BullModule } from '@nestjs/bull';
 import { Asset } from './entities/asset.entity';
 import { MetadataField } from './entities/metadata-field.entity';
 import { AssetMetadata } from './entities/asset-metadata.entity';
+import { GroupsModule } from '../groups/groups.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AssetMetadata } from './entities/asset-metadata.entity';
       name: 'assets',
     }),
     TypeOrmModule.forFeature([Asset, MetadataField, AssetMetadata]),
+    GroupsModule,
   ],
   controllers: [AssetsController],
   providers: [AssetsService, AssetProcessor],
