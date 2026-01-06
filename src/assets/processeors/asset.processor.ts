@@ -107,21 +107,13 @@ export class AssetProcessor {
   // ไฟล์รูปภาพ
   @Process('process-image')
   async handleImageProcessing(job: Job<AssetJobData>) {
-    const { filename, size, userId, groupId, mimetype, keywords, storageUrl } =
+    const { filename, originalPath, size, userId, groupId, mimetype, keywords } =
       job.data;
 
     const uploadsDir = path.join(process.cwd(), 'uploads');
     const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
 
-    // Download file from storage server
-    const response = await axios.get(storageUrl, { responseType: 'stream' });
-    const imagePath = path.join(uploadsDir, filename);
-    const writer = fs.createWriteStream(imagePath);
-    response.data.pipe(writer);
-    await new Promise((resolve, reject) => {
-      writer.on('finish', () => resolve(undefined));
-      writer.on('error', reject);
-    });
+    const imagePath = originalPath || path.join(uploadsDir, filename);
 
     await job.progress(20);
 
@@ -140,7 +132,7 @@ export class AssetProcessor {
       thumbnail: `uploads/thumbnails/${thumbnailFilename}`,
       file_type: mimetype,
       file_size: size,
-      path: `./uploads/${filename}`,
+      path: imagePath,
       keywords: keywords ? keywords.split(',') : [],
       create_by: userId,
       group_id: groupId,
@@ -151,8 +143,6 @@ export class AssetProcessor {
 
     await this.saveMetadata(savedAsset, job);
 
-    // Clean up downloaded file
-    await fsPromises.unlink(imagePath);
     await job.progress(100);
 
     return {
@@ -169,26 +159,17 @@ export class AssetProcessor {
     try {
       const {
         filename,
+        originalPath,
         size,
         userId,
         groupId,
         mimetype,
         keywords,
-        storageUrl,
       } = job.data;
 
       const uploadsDir = './uploads';
-      const videoPath = path.join(uploadsDir, filename);
+      const videoPath = originalPath || path.join(uploadsDir, filename);
       const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
-
-      // Download file from storage server
-      const response = await axios.get(storageUrl, { responseType: 'stream' });
-      const writer = fs.createWriteStream(videoPath);
-      response.data.pipe(writer);
-      await new Promise((resolve, reject) => {
-        writer.on('finish', () => resolve(undefined));
-        writer.on('error', reject);
-      });
 
       await job.progress(20);
 
@@ -207,7 +188,7 @@ export class AssetProcessor {
         thumbnail: `${thumbnailPath}`,
         file_type: mimetype,
         file_size: size,
-        path: `./uploads/${filename}`,
+        path: videoPath,
         keywords: [],
         create_by: userId,
         group_id: groupId,
@@ -217,9 +198,6 @@ export class AssetProcessor {
       const savedAsset = await this.assetRepository.save(asset);
 
       await this.saveMetadata(savedAsset, job);
-
-      // Clean up downloaded file
-      await fsPromises.unlink(videoPath);
 
       await job.progress(100);
 
@@ -241,7 +219,7 @@ export class AssetProcessor {
   @Process('process-document')
   async handleDocumentProcessing(job: Job<AssetJobData>) {
     try {
-      const { filename, size, userId, groupId, mimetype, storageUrl } =
+      const { filename, originalPath, size, userId, groupId, mimetype } =
         job.data;
 
       const uploadsDir = './uploads';
@@ -251,16 +229,7 @@ export class AssetProcessor {
       await fsPromises.mkdir(thumbnailsDir, { recursive: true });
       await fsPromises.mkdir(optimizedDir, { recursive: true });
 
-      const inputPath = path.join(uploadsDir, filename);
-
-      // Download file from storage server
-      const response = await axios.get(storageUrl, { responseType: 'stream' });
-      const writer = fs.createWriteStream(inputPath);
-      response.data.pipe(writer);
-      await new Promise((resolve, reject) => {
-        writer.on('finish', () => resolve(undefined));
-        writer.on('error', reject);
-      });
+      const inputPath = originalPath || path.join(uploadsDir, filename);
 
       const ext = path.extname(filename).toLowerCase();
       const baseName = path.parse(filename).name;
@@ -303,9 +272,6 @@ export class AssetProcessor {
       const savedAsset = await this.assetRepository.save(asset);
 
       await this.saveMetadata(savedAsset, job);
-
-      // Clean up downloaded file
-      await fsPromises.unlink(inputPath);
 
       await job.progress(100);
 

@@ -12,8 +12,6 @@ import {AssetJobData} from './processeors/asset.processor';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { GroupsService } from '../groups/groups.service';
-import axios from 'axios';
-import { getNextStorageServer, getAllStorageServers } from '../../config/storage.config';
 
 @Injectable()
 export class AssetsService {
@@ -100,9 +98,7 @@ export class AssetsService {
     throw new NotFoundException('Asset not found');
   }
 
-  /** -----------------------------
-   * 1️⃣ โหลด metadata_fields
-   * ----------------------------- */
+  // โหลด metadata_fields
   const fieldIds = metadata.map((m) => m.fieldId);
 
   const fields = await this.metadataFieldRepository.find({
@@ -113,9 +109,7 @@ export class AssetsService {
     fields.map((f) => [f.id, f]),
   );
 
-  /** -----------------------------
-   * 2️⃣ โหลด asset_metadata เดิม
-   * ----------------------------- */
+  // โหลด asset_metadata เดิม
   const existingMetadata = await this.assetMetadataRepository.find({
     where: {
       asset: { id: assetId },
@@ -128,16 +122,14 @@ export class AssetsService {
     existingMetadata.map((m) => [m.field.id, m]),
   );
 
-  /** -----------------------------
-   * 3️⃣ update / insert metadata
-   * ----------------------------- */
+  // update / insert metadata
   let newTitle: string | null = null;
 
   for (const { fieldId, value } of metadata) {
     const field = fieldsById[fieldId];
     if (!field) continue;
 
-    // 🔥 ถ้าเป็น title → เก็บไว้ไป update asset
+    // ถ้าเป็น title → เก็บไว้ไป update asset
     if (field.name === 'title') {
       newTitle = value;
     }
@@ -158,15 +150,13 @@ export class AssetsService {
     }
   }
 
-  /** -----------------------------
-   * 4️⃣ update asset (title + updated_at)
-   * ----------------------------- */
+  // update asset (title + updated_at)
   const assetUpdate: Partial<Asset> = {
-    updated_at: new Date(), // ✅ update timestamp
+    updated_at: new Date(), // update timestamp
   };
 
   if (newTitle !== null && newTitle !== '') {
-    assetUpdate.filename = newTitle; // ✅ sync title → filename
+    assetUpdate.filename = newTitle; // sync title → filename
   }
 
   await this.assetRepository.update(assetId, assetUpdate);
@@ -268,32 +258,29 @@ export class AssetsService {
     throw new NotFoundException(`Asset ${id} not found`);
   }
 
-  const storageServers = getAllStorageServers();
   const relativePath =
     type === 'thumb' && asset.thumbnail
       ? asset.thumbnail
       : asset.path;
 
-  for (const server of storageServers) {
-    try {
-      const url = `${server}/storage/file/${relativePath}`;
-      const response = await axios.get(url, {
-        responseType: 'stream',
-        timeout: 5000,
-      });
+  const filePath = path.join(process.cwd(), relativePath);
 
-      return {
-        readStream: response.data,
-        fileMimeType: response.headers['content-type'] || asset.file_type,
-        fileName: asset.filename,
-      };
-    } catch (error) {
-      console.warn(`Failed to fetch from ${server}:`, error.message);
-      continue;
-    }
+  console.log('Serving file:', filePath);
+
+  if (!fs.existsSync(filePath)) {
+    throw new NotFoundException('File not found on disk');
   }
 
-  throw new NotFoundException('File not found on any storage server');
+  const mimeType =
+    type === 'thumb'
+      ? 'image/png'
+      : asset.file_type;
+
+  return {
+    readStream: fs.createReadStream(filePath),
+    fileMimeType: mimeType,
+    fileName: path.basename(filePath),
+  };
 }
 
 
