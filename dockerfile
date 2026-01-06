@@ -15,6 +15,7 @@ WORKDIR /app
 # 3️⃣ copy package.json ก่อน (เพื่อ cache)
 COPY package*.json ./
 RUN npm install
+RUN npm install --os=linux --cpu=x64 sharp
 
 # 4️⃣ copy source
 COPY . .
