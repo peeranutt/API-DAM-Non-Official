@@ -31,6 +31,7 @@
     "@nestjs/typeorm": "^11.0.0",
     "@types/fluent-ffmpeg": "^2.1.28",
     "@types/iconv-lite": "^0.0.1",
+    "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
     "bull": "^4.16.5",
     "class-transformer": "^0.5.1",
@@ -46,7 +47,6 @@
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "sharp": "^0.34.5",
     "typeorm": "^0.3.27"
   },
   "devDependencies": {

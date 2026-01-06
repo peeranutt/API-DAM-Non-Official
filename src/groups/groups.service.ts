@@ -123,4 +123,21 @@ export class GroupsService {
 
     await this.groupMemberRepository.remove(member);
   }
+
+  async updateMemberPermission(
+    groupId: number,
+    memberUserId: number,
+    newPermission: GroupPermission,
+  ): Promise<GroupMember> {
+    const member = await this.groupMemberRepository.findOne({
+      where: { group_id: groupId, user_id: memberUserId },
+    });
+
+    if (!member) {
+      throw new NotFoundException('Member not found');
+    }
+
+    member.permission = newPermission;
+    return await this.groupMemberRepository.save(member);
+  }
 }

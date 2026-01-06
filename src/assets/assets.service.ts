@@ -12,6 +12,8 @@ import {AssetJobData} from './processeors/asset.processor';
 import { CreateAssetDto } from './dto/create-asset.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { GroupsService } from '../groups/groups.service';
+import axios from 'axios';
+import { getNextStorageServer, getAllStorageServers } from '../../config/storage.config';
 
 @Injectable()
 export class AssetsService {
@@ -25,10 +27,11 @@ export class AssetsService {
     private groupsService: GroupsService,
   ) {}
 
-  async processAsset(file: Express.Multer.File, userId?: number, groupId?: number) {
+  async processAsset(file: Express.Multer.File, userId?: number, groupId?: number, storageUrl?: string) {
     const jobData: AssetJobData = {
       filename: file.filename,
       originalPath: file.path,
+      storageUrl: storageUrl || '',
       mimetype: file.mimetype,
       size: file.size,
       userId,
@@ -251,7 +254,7 @@ export class AssetsService {
   id: string,
   type: 'thumb' | 'original' = 'thumb',
 ): Promise<{
-  readStream: fs.ReadStream;
+  readStream: any;
   fileMimeType: string;
   fileName: string;
 }> {
@@ -265,29 +268,32 @@ export class AssetsService {
     throw new NotFoundException(`Asset ${id} not found`);
   }
 
+  const storageServers = getAllStorageServers();
   const relativePath =
     type === 'thumb' && asset.thumbnail
       ? asset.thumbnail
       : asset.path;
 
-  const filePath = path.join(process.cwd(), relativePath);
+  for (const server of storageServers) {
+    try {
+      const url = `${server}/storage/file/${relativePath}`;
+      const response = await axios.get(url, {
+        responseType: 'stream',
+        timeout: 5000,
+      });
 
-  console.log('Serving file:', filePath);
-
-  if (!fs.existsSync(filePath)) {
-    throw new NotFoundException('File not found on disk');
+      return {
+        readStream: response.data,
+        fileMimeType: response.headers['content-type'] || asset.file_type,
+        fileName: asset.filename,
+      };
+    } catch (error) {
+      console.warn(`Failed to fetch from ${server}:`, error.message);
+      continue;
+    }
   }
 
-  const mimeType =
-    type === 'thumb'
-      ? 'image/png'
-      : asset.file_type;
-
-  return {
-    readStream: fs.createReadStream(filePath),
-    fileMimeType: mimeType,
-    fileName: path.basename(filePath),
-  };
+  throw new NotFoundException('File not found on any storage server');
 }
 
 

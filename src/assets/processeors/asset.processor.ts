@@ -3,9 +3,10 @@ import type { Job } from 'bull';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import sharp from 'sharp';
-import * as fs from 'fs/promises';
+import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 import * as path from 'path';
+import axios from 'axios';
 import { Asset, AssetStatus } from '../entities/asset.entity';
 import { AssetMetadata } from '../entities/asset-metadata.entity';
 import {
@@ -22,7 +23,8 @@ import {
 
 export interface AssetJobData {
   filename: string;
-  originalPath: string;
+  originalPath?: string;
+  storageUrl: string;
   mimetype: string;
   size: number;
   userId?: number;
@@ -105,12 +107,21 @@ export class AssetProcessor {
   // ไฟล์รูปภาพ
   @Process('process-image')
   async handleImageProcessing(job: Job<AssetJobData>) {
-    const { filename, size, userId, groupId, mimetype, keywords } = job.data;
+    const { filename, size, userId, groupId, mimetype, keywords, storageUrl } =
+      job.data;
 
     const uploadsDir = path.join(process.cwd(), 'uploads');
     const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
 
+    // Download file from storage server
+    const response = await axios.get(storageUrl, { responseType: 'stream' });
     const imagePath = path.join(uploadsDir, filename);
+    const writer = fs.createWriteStream(imagePath);
+    response.data.pipe(writer);
+    await new Promise((resolve, reject) => {
+      writer.on('finish', () => resolve(undefined));
+      writer.on('error', reject);
+    });
 
     await job.progress(20);
 
@@ -140,6 +151,8 @@ export class AssetProcessor {
 
     await this.saveMetadata(savedAsset, job);
 
+    // Clean up downloaded file
+    await fsPromises.unlink(imagePath);
     await job.progress(100);
 
     return {
@@ -154,11 +167,28 @@ export class AssetProcessor {
     this.logger.log(`Processing video: ${job.data.filename}`);
 
     try {
-      const { filename, size, userId, groupId, mimetype, keywords } = job.data;
+      const {
+        filename,
+        size,
+        userId,
+        groupId,
+        mimetype,
+        keywords,
+        storageUrl,
+      } = job.data;
 
       const uploadsDir = './uploads';
       const videoPath = path.join(uploadsDir, filename);
       const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
+
+      // Download file from storage server
+      const response = await axios.get(storageUrl, { responseType: 'stream' });
+      const writer = fs.createWriteStream(videoPath);
+      response.data.pipe(writer);
+      await new Promise((resolve, reject) => {
+        writer.on('finish', () => resolve(undefined));
+        writer.on('error', reject);
+      });
 
       await job.progress(20);
 
@@ -188,6 +218,9 @@ export class AssetProcessor {
 
       await this.saveMetadata(savedAsset, job);
 
+      // Clean up downloaded file
+      await fsPromises.unlink(videoPath);
+
       await job.progress(100);
 
       return {
@@ -208,16 +241,27 @@ export class AssetProcessor {
   @Process('process-document')
   async handleDocumentProcessing(job: Job<AssetJobData>) {
     try {
-      const { filename, size, userId, groupId, mimetype } = job.data;
+      const { filename, size, userId, groupId, mimetype, storageUrl } =
+        job.data;
 
       const uploadsDir = './uploads';
       const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
       const optimizedDir = path.join(uploadsDir, 'optimized');
 
-      await fs.mkdir(thumbnailsDir, { recursive: true });
-      await fs.mkdir(optimizedDir, { recursive: true });
+      await fsPromises.mkdir(thumbnailsDir, { recursive: true });
+      await fsPromises.mkdir(optimizedDir, { recursive: true });
 
       const inputPath = path.join(uploadsDir, filename);
+
+      // Download file from storage server
+      const response = await axios.get(storageUrl, { responseType: 'stream' });
+      const writer = fs.createWriteStream(inputPath);
+      response.data.pipe(writer);
+      await new Promise((resolve, reject) => {
+        writer.on('finish', () => resolve(undefined));
+        writer.on('error', reject);
+      });
+
       const ext = path.extname(filename).toLowerCase();
       const baseName = path.parse(filename).name;
       const thumbPath = path.join(thumbnailsDir, `thumb_${baseName}.png`);
@@ -233,9 +277,12 @@ export class AssetProcessor {
         const pdfPath = path.join(thumbnailsDir, `${baseName}.pdf`);
         await pdfToThumbnail(pdfPath, thumbPath);
       } else {
-        await sharp(Buffer.from(generateSvgPlaceholder(filename)))
-          .png()
-          .toFile(thumbPath);
+        const svgPath = path.join(thumbnailsDir, `thumb_${baseName}.svg`);
+        await fsPromises.writeFile(
+          svgPath,
+          generateSvgPlaceholder(filename),
+          'utf-8',
+        );
       }
 
       await job.progress(60);
@@ -256,6 +303,9 @@ export class AssetProcessor {
       const savedAsset = await this.assetRepository.save(asset);
 
       await this.saveMetadata(savedAsset, job);
+
+      // Clean up downloaded file
+      await fsPromises.unlink(inputPath);
 
       await job.progress(100);
 
@@ -278,7 +328,7 @@ export class AssetProcessor {
 
     for (const file of job.data.files) {
       try {
-        await fs.unlink(file);
+        await fsPromises.unlink(file);
         this.logger.log(`Deleted: ${file}`);
       } catch (error) {
         this.logger.warn(
