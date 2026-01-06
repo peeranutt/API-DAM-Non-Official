@@ -30,6 +30,10 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import * as fs from 'fs';
 import { sha256File } from './processeors/hash';
 import { GroupsService } from '../groups/groups.service';
+import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
+import { getNextStorageServer, getAllStorageServers } from '../../config/storage.config';
+import axios from 'axios';
+import FormData from 'form-data';
 
 interface UploadJobResult {
   jobId: string;
@@ -37,7 +41,6 @@ interface UploadJobResult {
   checksum: string;
 }
 
-import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
 @Controller('assets')
 export class AssetsController {
   constructor(
@@ -88,9 +91,14 @@ export class AssetsController {
 
     // If groupId is provided, check if user can upload to that group
     if (groupId) {
-      const canUpload = await this.assetsService.canUserUploadToGroup(+groupId, userId);
+      const canUpload = await this.assetsService.canUserUploadToGroup(
+        +groupId,
+        userId,
+      );
       if (!canUpload) {
-        throw new BadRequestException('You do not have permission to upload to this group');
+        throw new BadRequestException(
+          'You do not have permission to upload to this group',
+        );
       }
     }
 
@@ -116,8 +124,50 @@ export class AssetsController {
         );
       }
 
+      const storageServers = getAllStorageServers();
+
+      // Upload to all storage servers
+      const uploadPromises = storageServers.map(async (server) => {
+        try {
+          const form = new FormData();
+          form.append('file', fs.createReadStream(file.path), file.originalname);
+
+          const res = await axios.post(`${server}/storage/upload`, form, {
+            headers: form.getHeaders(),
+            maxBodyLength: Infinity,
+            timeout: 10000, // 10 seconds timeout
+          });
+          return { server, success: true, response: res.data };
+        } catch (error) {
+          console.error(`Failed to upload to ${server}:`, error.message);
+          return { server, success: false, error: error.message };
+        }
+      });
+
+      const uploadResults = await Promise.all(uploadPromises);
+
+      // Check if at least one upload succeeded
+      const successfulUploads = uploadResults.filter(result => result.success);
+
+      if (successfulUploads.length === 0) {
+        fs.unlinkSync(file.path);
+        throw new BadRequestException('Failed to upload to any storage server');
+      }
+
+      // Use the first successful upload's URL
+      const firstSuccess = successfulUploads[0];
+      const fileUrl = firstSuccess.response.fileUrl || `${firstSuccess.server}/storage/file/${file.filename}`;
+
+      fs.unlinkSync(file.path); // ลบไฟล์ชั่วคราวหลังอัปโหลดไปยัง storage server แล้ว
+
       // checksum ตรง
-      const job = await this.assetsService.processAsset(file, userId, groupId ? +groupId : undefined);
+      const job = await this.assetsService.processAsset(
+        file,
+        userId,
+        groupId ? +groupId : undefined,
+        fileUrl,
+      );
+
       jobs.push({
         jobId: String(job.id),
         filename: file.originalname,
@@ -167,7 +217,9 @@ export class AssetsController {
     // Check if user can access this asset
     const canAccess = await this.assetsService.canUserAccessAsset(+id, userId);
     if (!canAccess) {
-      return res.status(403).send('You do not have permission to access this asset');
+      return res
+        .status(403)
+        .send('You do not have permission to access this asset');
     }
 
     try {
@@ -182,8 +234,9 @@ export class AssetsController {
 
       res.setHeader('Content-Type', fileMimeType);
       res.setHeader(
-        'Content-Disposition', 
-        `inline; filename="file"; filename*=UTF-8''${encodedFilename}`,);
+        'Content-Disposition',
+        `inline; filename="file"; filename*=UTF-8''${encodedFilename}`,
+      );
       readStream.pipe(res);
     } catch (error) {
       console.error('Error serving asset file:', error);
@@ -193,13 +246,19 @@ export class AssetsController {
 
   @Get(':id/download')
   @UseGuards(JwtAuthGuard)
-  async downloadAsset(@Param('id') id: number, @Res() res: Response, @Req() req: Request) {
+  async downloadAsset(
+    @Param('id') id: number,
+    @Res() res: Response,
+    @Req() req: Request,
+  ) {
     const userId = (req as any).user.id;
 
     // Check if user can access this asset
     const canAccess = await this.assetsService.canUserAccessAsset(id, userId);
     if (!canAccess) {
-      return res.status(403).send('You do not have permission to access this asset');
+      return res
+        .status(403)
+        .send('You do not have permission to access this asset');
     }
 
     const asset = await this.assetsService.getAssetForDownload(id);
@@ -224,7 +283,9 @@ export class AssetsController {
     // Check if user can access this asset
     const canAccess = await this.assetsService.canUserAccessAsset(+id, userId);
     if (!canAccess) {
-      throw new ForbiddenException('You do not have permission to access this asset');
+      throw new ForbiddenException(
+        'You do not have permission to access this asset',
+      );
     }
 
     return asset;
