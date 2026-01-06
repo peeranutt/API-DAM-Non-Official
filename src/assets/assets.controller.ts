@@ -31,9 +31,6 @@ import * as fs from 'fs';
 import { sha256File } from './processeors/hash';
 import { GroupsService } from '../groups/groups.service';
 import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
-import { getNextStorageServer, getAllStorageServers } from '../../config/storage.config';
-import axios from 'axios';
-import FormData from 'form-data';
 
 interface UploadJobResult {
   jobId: string;
@@ -91,14 +88,9 @@ export class AssetsController {
 
     // If groupId is provided, check if user can upload to that group
     if (groupId) {
-      const canUpload = await this.assetsService.canUserUploadToGroup(
-        +groupId,
-        userId,
-      );
+      const canUpload = await this.assetsService.canUserUploadToGroup(+groupId, userId);
       if (!canUpload) {
-        throw new BadRequestException(
-          'You do not have permission to upload to this group',
-        );
+        throw new BadRequestException('You do not have permission to upload to this group');
       }
     }
 
@@ -124,50 +116,8 @@ export class AssetsController {
         );
       }
 
-      const storageServers = getAllStorageServers();
-
-      // Upload to all storage servers
-      const uploadPromises = storageServers.map(async (server) => {
-        try {
-          const form = new FormData();
-          form.append('file', fs.createReadStream(file.path), file.originalname);
-
-          const res = await axios.post(`${server}/storage/upload`, form, {
-            headers: form.getHeaders(),
-            maxBodyLength: Infinity,
-            timeout: 10000, // 10 seconds timeout
-          });
-          return { server, success: true, response: res.data };
-        } catch (error) {
-          console.error(`Failed to upload to ${server}:`, error.message);
-          return { server, success: false, error: error.message };
-        }
-      });
-
-      const uploadResults = await Promise.all(uploadPromises);
-
-      // Check if at least one upload succeeded
-      const successfulUploads = uploadResults.filter(result => result.success);
-
-      if (successfulUploads.length === 0) {
-        fs.unlinkSync(file.path);
-        throw new BadRequestException('Failed to upload to any storage server');
-      }
-
-      // Use the first successful upload's URL
-      const firstSuccess = successfulUploads[0];
-      const fileUrl = firstSuccess.response.fileUrl || `${firstSuccess.server}/storage/file/${file.filename}`;
-
-      fs.unlinkSync(file.path); // ลบไฟล์ชั่วคราวหลังอัปโหลดไปยัง storage server แล้ว
-
       // checksum ตรง
-      const job = await this.assetsService.processAsset(
-        file,
-        userId,
-        groupId ? +groupId : undefined,
-        fileUrl,
-      );
-
+      const job = await this.assetsService.processAsset(file, userId, groupId ? +groupId : undefined);
       jobs.push({
         jobId: String(job.id),
         filename: file.originalname,
