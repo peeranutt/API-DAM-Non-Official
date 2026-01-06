@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, Req, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, Req, ForbiddenException, Patch } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { GroupPermission } from './entities/group.entity';
@@ -74,5 +74,24 @@ export class GroupsController {
 
     await this.groupsService.removeMember(groupId, memberUserId);
     return { success: true, message: 'Member removed' };
+  }
+
+  @Patch(':groupId/members/:userId/permission')
+  @UseGuards(JwtAuthGuard)
+  async updateMemberPermission(
+    @Param('groupId') groupId: number,
+    @Param('userId') memberUserId: number,
+    @Body() body: { permission: GroupPermission },
+    @Req() req: Request,
+  ) {
+    const userId = (req as any).user.id;
+    const permission = await this.groupsService.checkUserPermission(groupId, userId);
+
+    if (permission !== GroupPermission.ADMIN) {
+      throw new ForbiddenException('Only group admins can update member permissions');
+    }
+
+    const member = await this.groupsService.updateMemberPermission(groupId, memberUserId, body.permission);
+    return { success: true, member };
   }
 }

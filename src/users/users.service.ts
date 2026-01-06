@@ -55,8 +55,8 @@ export class UsersService {
     return this.repo.save(user);
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  async findOne(id: number): Promise<User | null> {
+    return this.repo.findOne({ where: { id } });
   }
 
   update(id: number, updateUserDto: UpdateUserDto) {
