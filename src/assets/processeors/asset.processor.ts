@@ -6,20 +6,13 @@ import { Repository, In } from 'typeorm';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
-import axios from 'axios';
-import { Asset, AssetStatus } from '../entities/asset.entity';
+import { Asset, AssetStatus, StorageLocation } from '../entities/asset.entity';
 import { AssetMetadata } from '../entities/asset-metadata.entity';
-import {
-  MetadataField,
-  MetadataFieldType,
-} from '../entities/metadata-field.entity';
+import { MetadataField } from '../entities/metadata-field.entity';
 import { generateImageThumbnail } from '../utils/image-thumbnail';
 import { generateVideoThumbnail } from '../utils/video-thumbnail';
-import {
-  pdfToThumbnail,
-  officeToPdf,
-  generateSvgPlaceholder,
-} from '../utils/doc-thumbnail';
+import { pdfToThumbnail, officeToPdf, generateSvgPlaceholder } from '../utils/doc-thumbnail';
+import { StorageConfig, DEFAULT_STORAGE } from '../config/storage.config';
 
 export interface AssetJobData {
   filename: string;
@@ -29,6 +22,7 @@ export interface AssetJobData {
   size: number;
   userId?: number;
   groupId?: number;
+  storageLocation?: StorageLocation;
 
   assetCode?: string;
   category?: string;
@@ -58,7 +52,6 @@ export class AssetProcessor {
     private metadataFieldRepository: Repository<MetadataField>,
   ) {}
 
-  // บันทึก metadata
   private async saveMetadata(savedAsset: Asset, job: Job<AssetJobData>) {
     const metadataMap: Record<string, string> = {
       assetCode: savedAsset.id.toString(),
@@ -81,7 +74,6 @@ export class AssetProcessor {
       .map(([name, value]) => ({ name, value }));
 
     const fieldNames = metadataEntries.map((m) => m.name);
-
     const fields = await this.metadataFieldRepository.find({
       where: { name: In(fieldNames) },
     });
@@ -104,14 +96,15 @@ export class AssetProcessor {
     await this.metadataRepository.save(assetMetadataEntities);
   }
 
-  // ไฟล์รูปภาพ
   @Process('process-image')
   async handleImageProcessing(job: Job<AssetJobData>) {
-    const { filename, originalPath, size, userId, groupId, mimetype, keywords } =
-      job.data;
+    const { filename, originalPath, size, userId, groupId, mimetype, keywords, storageLocation } = job.data;
+    const selectedStorage = storageLocation || DEFAULT_STORAGE;
 
-    const uploadsDir = path.join(process.cwd(), 'uploads');
-    const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
+    const uploadsDir = StorageConfig.getUploadsDir(selectedStorage);
+    const thumbnailsDir = StorageConfig.getThumbnailsDir(selectedStorage);
+
+    await StorageConfig.ensureDirectories(selectedStorage);
 
     const imagePath = originalPath || path.join(uploadsDir, filename);
 
@@ -125,14 +118,18 @@ export class AssetProcessor {
 
     await job.progress(60);
 
-    /**CREATE ASSET**/
+    // Store paths relative to storage root
+    const relativePath = StorageConfig.getRelativePath(selectedStorage, imagePath);
+    const relativeThumbnail = `${selectedStorage}/uploads/thumbnails/${thumbnailFilename}`;
+
     const asset = this.assetRepository.create({
       filename,
       original_name: filename,
-      thumbnail: `uploads/thumbnails/${thumbnailFilename}`,
+      thumbnail: relativeThumbnail,
       file_type: mimetype,
       file_size: size,
-      path: imagePath,
+      path: relativePath,
+      storage_location: selectedStorage,
       keywords: keywords ? keywords.split(',') : [],
       create_by: userId,
       group_id: groupId,
@@ -140,36 +137,30 @@ export class AssetProcessor {
     });
 
     const savedAsset = await this.assetRepository.save(asset);
-
     await this.saveMetadata(savedAsset, job);
-
     await job.progress(100);
 
     return {
       success: true,
       assetId: savedAsset.id,
+      storageLocation: selectedStorage,
     };
   }
 
-  // ไฟล์วิดีโอ
   @Process('process-video')
   async handleVideoProcessing(job: Job<AssetJobData>) {
     this.logger.log(`Processing video: ${job.data.filename}`);
 
     try {
-      const {
-        filename,
-        originalPath,
-        size,
-        userId,
-        groupId,
-        mimetype,
-        keywords,
-      } = job.data;
+      const { filename, originalPath, size, userId, groupId, mimetype, keywords, storageLocation } = job.data;
+      const selectedStorage = storageLocation || DEFAULT_STORAGE;
 
-      const uploadsDir = './uploads';
+      const uploadsDir = StorageConfig.getUploadsDir(selectedStorage);
+      const thumbnailsDir = StorageConfig.getThumbnailsDir(selectedStorage);
+
+      await StorageConfig.ensureDirectories(selectedStorage);
+
       const videoPath = originalPath || path.join(uploadsDir, filename);
-      const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
 
       await job.progress(20);
 
@@ -181,14 +172,17 @@ export class AssetProcessor {
 
       await job.progress(60);
 
-      // บันทึก Video asset ลง database
+      const relativePath = StorageConfig.getRelativePath(selectedStorage, videoPath);
+      const relativeThumbnail = StorageConfig.getRelativePath(selectedStorage, thumbnailPath);
+
       const asset = this.assetRepository.create({
         filename,
         original_name: filename,
-        thumbnail: `${thumbnailPath}`,
+        thumbnail: relativeThumbnail,
         file_type: mimetype,
         file_size: size,
-        path: videoPath,
+        path: relativePath,
+        storage_location: selectedStorage,
         keywords: [],
         create_by: userId,
         group_id: groupId,
@@ -196,22 +190,18 @@ export class AssetProcessor {
       });
 
       const savedAsset = await this.assetRepository.save(asset);
-
       await this.saveMetadata(savedAsset, job);
-
       await job.progress(100);
 
       return {
         success: true,
         assetId: savedAsset.id,
         filename,
+        storageLocation: selectedStorage,
         message: 'Video processing completed',
       };
     } catch (error) {
-      this.logger.error(
-        `Error processing video: ${error?.message ?? error}`,
-        error?.stack,
-      );
+      this.logger.error(`Error processing video: ${error?.message ?? error}`, error?.stack);
       throw error;
     }
   }
@@ -219,15 +209,13 @@ export class AssetProcessor {
   @Process('process-document')
   async handleDocumentProcessing(job: Job<AssetJobData>) {
     try {
-      const { filename, originalPath, size, userId, groupId, mimetype } =
-        job.data;
+      const { filename, originalPath, size, userId, groupId, mimetype, storageLocation } = job.data;
+      const selectedStorage = storageLocation || DEFAULT_STORAGE;
 
-      const uploadsDir = './uploads';
-      const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
-      const optimizedDir = path.join(uploadsDir, 'optimized');
+      const uploadsDir = StorageConfig.getUploadsDir(selectedStorage);
+      const thumbnailsDir = StorageConfig.getThumbnailsDir(selectedStorage);
 
-      await fsPromises.mkdir(thumbnailsDir, { recursive: true });
-      await fsPromises.mkdir(optimizedDir, { recursive: true });
+      await StorageConfig.ensureDirectories(selectedStorage);
 
       const inputPath = originalPath || path.join(uploadsDir, filename);
 
@@ -239,30 +227,28 @@ export class AssetProcessor {
 
       if (ext === '.pdf') {
         await pdfToThumbnail(inputPath, thumbPath);
-      } else if (
-        ['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'].includes(ext)
-      ) {
+      } else if (['.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx'].includes(ext)) {
         await officeToPdf(inputPath, thumbnailsDir);
         const pdfPath = path.join(thumbnailsDir, `${baseName}.pdf`);
         await pdfToThumbnail(pdfPath, thumbPath);
       } else {
         const svgPath = path.join(thumbnailsDir, `thumb_${baseName}.svg`);
-        await fsPromises.writeFile(
-          svgPath,
-          generateSvgPlaceholder(filename),
-          'utf-8',
-        );
+        await fsPromises.writeFile(svgPath, generateSvgPlaceholder(filename), 'utf-8');
       }
 
       await job.progress(60);
 
+      const relativePath = StorageConfig.getRelativePath(selectedStorage, inputPath);
+      const relativeThumbnail = `${selectedStorage}/uploads/thumbnails/thumb_${baseName}.png`;
+
       const asset = this.assetRepository.create({
         filename,
         original_name: filename,
-        thumbnail: `uploads/thumbnails/thumb_${baseName}.png`,
+        thumbnail: relativeThumbnail,
         file_type: mimetype,
         file_size: size,
-        path: inputPath,
+        path: relativePath,
+        storage_location: selectedStorage,
         keywords: [],
         create_by: userId,
         group_id: groupId,
@@ -270,20 +256,16 @@ export class AssetProcessor {
       });
 
       const savedAsset = await this.assetRepository.save(asset);
-
       await this.saveMetadata(savedAsset, job);
-
       await job.progress(100);
 
       return {
         success: true,
         assetId: savedAsset.id,
+        storageLocation: selectedStorage,
       };
     } catch (error) {
-      this.logger.error(
-        `Document processing failed: ${error?.message ?? error}`,
-        error?.stack,
-      );
+      this.logger.error(`Document processing failed: ${error?.message ?? error}`, error?.stack);
       throw error;
     }
   }
@@ -297,9 +279,7 @@ export class AssetProcessor {
         await fsPromises.unlink(file);
         this.logger.log(`Deleted: ${file}`);
       } catch (error) {
-        this.logger.warn(
-          `Failed to delete ${file}: ${error?.message ?? error}`,
-        );
+        this.logger.warn(`Failed to delete ${file}: ${error?.message ?? error}`);
       }
     }
 
@@ -321,129 +301,8 @@ export class AssetProcessor {
         deletedCount: job.data.assetIds.length,
       };
     } catch (error) {
-      this.logger.error(
-        `Error soft deleting assets: ${error?.message ?? error}`,
-      );
+      this.logger.error(`Error soft deleting assets: ${error?.message ?? error}`);
       throw error;
     }
   }
 }
-
-// ไฟล์ PDF
-// @Process('process-pdf')
-// async handlePdfProcessing(job: Job<AssetJobData>) {
-//   this.logger.log(`Processing PDF: ${job.data.filename}`);
-
-//   try {
-//     const { filename, originalPath, size, userId, mimetype } = job.data;
-
-//     const uploadsDir = './uploads';
-//     const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
-//     const optimizedDir = path.join(uploadsDir, 'optimized');
-
-//     await fs.mkdir(thumbnailsDir, { recursive: true });
-//     await fs.mkdir(optimizedDir, { recursive: true });
-
-//     const inputPath = path.join(uploadsDir, filename);
-
-//     await job.progress(20);
-
-//     // create a PNG thumbnail as a fallback by rendering a small SVG
-//     const baseName = filename.replace(/\.[^.]+$/, '');
-//     const thumbFilename = `thumb_${baseName}.png`;
-//     const thumbnailPath = path.join(thumbnailsDir, thumbFilename);
-
-//     const svg = `
-//     <svg width="800" height="1000" xmlns="http://www.w3.org/2000/svg">
-//       <rect width="100%" height="100%" fill="#f8fafc" />
-//       <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" font-size="36" fill="#111827" font-family="Arial, Helvetica, sans-serif">PDF Preview</text>
-//       <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="20" fill="#6b7280">${filename}</text>
-//     </svg>`;
-
-//     await sharp(Buffer.from(svg)).png().toFile(thumbnailPath);
-
-//     await job.progress(60);
-
-//     // copy original PDF to optimized folder (keep original as preview source)
-//     const optimizedPath = path.join(optimizedDir, filename);
-//     try {
-//       await fs.copyFile(inputPath, optimizedPath);
-//     } catch (e) {
-//       this.logger.warn(
-//         `Could not copy PDF to optimized folder: ${e?.message ?? e}`,
-//       );
-//     }
-
-//     // save Asset to database
-//     const asset = this.assetRepository.create({
-//       filename,
-//       file_type: mimetype,
-//       file_size: size,
-//       path: inputPath,
-//       create_by: userId,
-//       status: AssetStatus.ACTIVE,
-//     });
-
-//     const savedAsset = await this.assetRepository.save(asset);
-
-//     // metadata entries
-//     const metadataEntries = [
-//       { meta_key: 'format', meta_value: 'pdf' },
-//       {
-//         meta_key: 'thumbnail_path',
-//         meta_value: `thumbnails/${thumbFilename}`,
-//       },
-//       { meta_key: 'optimized_path', meta_value: `optimized/${filename}` },
-//     ];
-
-//     // Ensure metadata fields exist and map entries to AssetMetadata with field relation
-//     const keys = metadataEntries.map((e) => e.meta_key);
-//     const existingFields = await this.metadataFieldRepository.find({
-//       where: { name: In(keys) },
-//     });
-
-//     const fieldsByName: Record<string, MetadataField> = {};
-//     for (const f of existingFields) fieldsByName[f.name] = f;
-
-//     const toCreateFields = keys.filter((k) => !fieldsByName[k]);
-//     for (const name of toCreateFields) {
-//       const newField = this.metadataFieldRepository.create({
-//         name,
-//         type: MetadataFieldType.TEXT,
-//         options: null,
-//       });
-//       const savedField = await this.metadataFieldRepository.save(newField);
-//       fieldsByName[savedField.name] = savedField;
-//     }
-
-//     const assetMetadataEntities = metadataEntries.map((entry) => {
-//       const field = fieldsByName[entry.meta_key];
-//       return this.metadataRepository.create({
-//         asset: savedAsset,
-//         field: field,
-//         value: entry.meta_value,
-//       });
-//     });
-
-//     await this.metadataRepository.save(assetMetadataEntities);
-
-//     await job.progress(100);
-
-//     return {
-//       success: true,
-//       assetId: savedAsset.id,
-//       filename,
-//       thumbnail: `thumbnails/${thumbFilename}`,
-//       optimized: `optimized/${filename}`,
-//       metadata: {
-//         format: 'pdf',
-//       },
-//     };
-//   } catch (error) {
-//     this.logger.error(
-//       `Error processing PDF: ${error?.message ?? error}`,
-//       error?.stack,
-//     );
-//     throw error;
-//   }
-// }

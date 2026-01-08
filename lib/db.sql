@@ -36,6 +36,7 @@ create table assets (
 	file_type varchar(50) NOT NULL,
 	file_size BIGINT,
 	path varchar NOT NULL,
+	storage_location varchar(50) NOT NULL,
 	keywords TEXT[],
 	status varchar(20) check (status IN ('active', 'deleted')) NOT NULL,
 	create_by int not null references users(id),

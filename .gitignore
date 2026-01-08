@@ -3,6 +3,9 @@
 /node_modules
 /build
 /uploads
+/mnt
+/storage1
+/STORAGE2
 
 run-docker.txt
 
