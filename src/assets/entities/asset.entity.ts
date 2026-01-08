@@ -17,6 +17,11 @@ export enum AssetStatus {
   DELETED = 'deleted',
 }
 
+export enum StorageLocation {
+  STORAGE1 = 'DAM_STORAGE1',
+  STORAGE2 = 'DAM_STORAGE2',
+}
+
 @Entity({ name: 'assets' })
 export class Asset {
   @PrimaryGeneratedColumn()
@@ -56,6 +61,13 @@ export class Asset {
     type: 'varchar',
   })
   path: string;
+
+  @Column({
+    type: 'enum',
+    enum: StorageLocation,
+    default: StorageLocation.STORAGE1,
+  })
+  storage_location: StorageLocation;
 
   @Column(
     "text", { 

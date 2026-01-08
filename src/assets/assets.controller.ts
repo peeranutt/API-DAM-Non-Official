@@ -24,13 +24,18 @@ import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import iconv from 'iconv-lite';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import * as path from 'path';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import * as fs from 'fs';
 import { sha256File } from './processeors/hash';
 import { GroupsService } from '../groups/groups.service';
 import { UseGuards } from '@nestjs/common/decorators/core/use-guards.decorator';
+import {
+  StorageConfig,
+  StorageLocation,
+  DEFAULT_STORAGE,
+} from './config/storage.config';
 
 interface UploadJobResult {
   jobId: string;
@@ -50,9 +55,23 @@ export class AssetsController {
   @UseInterceptors(
     FilesInterceptor('files', 10, {
       storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, cb) => {
+        destination: async (req, file, cb) => {
           console.log('Original filename:', file.originalname);
+
+          console.log('Request body:', req.body);
+          const selectedStorage =
+            (req.query.storageLocation as StorageLocation);
+          console.log('Selected storage location:', selectedStorage);
+
+          try {
+            await StorageConfig.ensureDirectories(selectedStorage);
+            const uploadDir = StorageConfig.getUploadsDir(selectedStorage);
+            cb(null, uploadDir);
+          } catch (error) {
+            cb(error, '');
+          }
+        },
+        filename: (req, file, cb) => {
           // ชื่อไฟล์
           let originalname = file.originalname;
           try {
@@ -85,12 +104,22 @@ export class AssetsController {
     @Req() req: Request,
   ) {
     const userId = (req as any).user.id;
+    const selectedStorage = (req.query.storageLocation as StorageLocation) || DEFAULT_STORAGE;
+
+    console.log(
+      `Uploading to storage location: ${selectedStorage} by user ${userId}`,
+    );
 
     // If groupId is provided, check if user can upload to that group
     if (groupId) {
-      const canUpload = await this.assetsService.canUserUploadToGroup(+groupId, userId);
+      const canUpload = await this.assetsService.canUserUploadToGroup(
+        +groupId,
+        userId,
+      );
       if (!canUpload) {
-        throw new BadRequestException('You do not have permission to upload to this group');
+        throw new BadRequestException(
+          'You do not have permission to upload to this group',
+        );
       }
     }
 
@@ -117,7 +146,12 @@ export class AssetsController {
       }
 
       // checksum ตรง
-      const job = await this.assetsService.processAsset(file, userId, groupId ? +groupId : undefined);
+      const job = await this.assetsService.processAsset(
+        file,
+        userId,
+        groupId ? +groupId : undefined,
+        selectedStorage,
+      );
       jobs.push({
         jobId: String(job.id),
         filename: file.originalname,
@@ -125,7 +159,7 @@ export class AssetsController {
       });
     }
 
-    return { success: true, count: files.length, jobs };
+    return { success: true, count: files.length, jobs, selectedStorage };
   }
 
   @Put(':assetId/metadata')

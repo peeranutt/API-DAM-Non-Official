@@ -3,6 +3,10 @@
 /node_modules
 /build
 /uploads
+/DAM_STORAGE1
+/DAM_STORAGE2
+/storage1
+/STORAGE2
 
 run-docker.txt
 
