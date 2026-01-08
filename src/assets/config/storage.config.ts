@@ -88,9 +88,9 @@ export class StorageConfig {
    * Parse storage location from path
    */
   static parseStorageFromPath(filePath: string): StorageLocation | null {
-    if (filePath.startsWith('DAM_STORAGE1/')) {
+    if (filePath.startsWith('mnt/DAM_STORAGE1/')) {
       return StorageLocation.STORAGE1;
-    } else if (filePath.startsWith('DAM_STORAGE2/')) {
+    } else if (filePath.startsWith('mnt/DAM_STORAGE2/')) {
       return StorageLocation.STORAGE2;
     }
     return null;
