@@ -2,11 +2,11 @@ FROM node:20-bullseye
 
 # 1️⃣ ติดตั้ง dependency สำหรับ document processing
 RUN apt-get update && apt-get install -y \
-    libreoffice \
-    poppler-utils \
+    # libreoffice \
+    # poppler-utils \
     ffmpeg \
-    fonts-dejavu \
-    fonts-thai-tlwg \
+    # fonts-dejavu \
+    # fonts-thai-tlwg \
     && rm -rf /var/lib/apt/lists/*
 
 # 2️⃣ ตั้ง working directory
