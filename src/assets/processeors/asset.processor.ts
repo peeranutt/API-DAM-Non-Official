@@ -3,7 +3,6 @@ import type { Job } from 'bull';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import { Asset, AssetStatus, StorageLocation } from '../entities/asset.entity';
@@ -173,7 +172,7 @@ export class AssetProcessor {
       await job.progress(60);
 
       const relativePath = StorageConfig.getRelativePath(selectedStorage, videoPath);
-      const relativeThumbnail = StorageConfig.getRelativePath(selectedStorage, thumbnailPath);
+      const relativeThumbnail = `${selectedStorage}/uploads/thumbnails/${path.basename(thumbnailPath)}`;
 
       const asset = this.assetRepository.create({
         filename,

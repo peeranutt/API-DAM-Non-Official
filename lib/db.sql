@@ -104,11 +104,9 @@ INSERT INTO metadata_fields (name, name_th, type, options) VALUES
 ('keywords', 'คำสำคัญ', 'text', NULL),
 ('description', 'รายละเอียด', 'text', NULL),
 ('createDate', 'วันที่สร้าง', 'date', NULL),
-('userKeywords', 'คำค้นหาผู้ใช้', 'text', NULL),
-('collectionId', 'รหัสคอลเลกชัน', 'text', NULL),
 ('notes', 'หมายเหตุ', 'text', NULL),
 ('accessRights', 'สิทธิ์การเข้าถึง', 'select', 'public,private'),
 ('owner', 'เจ้าของ', 'text', NULL),
 ('modifiedDate', 'วันที่แก้ไข', 'date', NULL),
-('status', 'สถานะ', 'select', 'active,deleted'),
+('status', 'สถานะ', 'select', 'active, deleted'),
 ('path', 'ตำแหน่งไฟล์', 'text', NULL);
